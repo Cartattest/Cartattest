@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyCheckoutSchema } from "../dist/persistence/SchemaMigration.js";
+import { applyCheckoutSchema, applySchemaMigration } from "../dist/persistence/SchemaMigration.js";
 
 test("applies the checkout schema once inside a transaction", async () => {
   const calls = [];
@@ -29,6 +29,17 @@ test("skips an applied version and rolls back a failed schema transaction", asyn
     return { rows: [] };
   }), "BROKEN SQL"), { message: "database rejected schema" });
   assert.equal(failedCalls.at(-1).sql, "ROLLBACK");
+});
+
+test("applies step-up sessions as a separately versioned migration", async () => {
+  const calls = [];
+  const pool = fakePool(calls, (sql, values) => {
+    if (sql.startsWith("SELECT version")) return { rows: values[0] === "0002_step_up_sessions" ? [] : [{ version: values[0] }] };
+    return { rows: [], rowCount: 1 };
+  });
+  assert.equal(await applySchemaMigration(pool, "0002_step_up_sessions", "CREATE TABLE step_up_sessions ();"), true);
+  assert.ok(calls.some((call) => call.sql === "CREATE TABLE step_up_sessions ();"));
+  assert.deepEqual(calls.find((call) => call.sql.startsWith("INSERT INTO schema_migrations")).values, ["0002_step_up_sessions"]);
 });
 
 function fakePool(calls, respond) {
