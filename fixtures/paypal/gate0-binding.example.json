@@ -1,0 +1,42 @@
+{
+  "schemaVersion": "cart-binding-v1",
+  "intent": "CAPTURE",
+  "purchaseUnitCount": 1,
+  "payee": {
+    "identityType": "MERCHANT_ID",
+    "identityValue": "REPLACE_WITH_SANDBOX_MERCHANT_ID"
+  },
+  "currency": "GBP",
+  "amountBreakdown": {
+    "itemTotal": "20.00",
+    "taxTotal": "2.00",
+    "shipping": "3.50",
+    "handling": "0.00",
+    "insurance": "0.00",
+    "shippingDiscount": "0.00",
+    "discount": "0.00",
+    "total": "25.50"
+  },
+  "shipping": {
+    "preference": "SET_PROVIDED_ADDRESS",
+    "name": "CartAttest Sandbox Buyer",
+    "address": {
+      "addressLine1": "1 Test Street",
+      "adminArea2": "Dublin",
+      "postalCode": "D02TEST",
+      "countryCode": "IE"
+    },
+    "optionId": "standard",
+    "type": "SHIPPING",
+    "amount": "3.50"
+  },
+  "items": [
+    {
+      "name": "Fictional Waterproof Shell",
+      "sku": "SHELL-BLUE-M",
+      "quantity": "1",
+      "unitAmount": "20.00",
+      "tax": "2.00"
+    }
+  ]
+}
