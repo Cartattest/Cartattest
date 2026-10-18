@@ -88,10 +88,10 @@ test("rejects an order that does not have exactly one purchase unit", () => {
   });
 });
 
-test("binding equality uses canonical JSON rather than object insertion order", { skip: !cartBinding.hashCartBinding }, () => {
+test("binding equality uses canonical JSON rather than object insertion order", () => {
   assert.doesNotThrow(() => cartBinding.assertBindingEqual({ a: 1, b: 2 }, { b: 2, a: 1 }));
 });
 
-test("hashes objects with RFC 8785 property ordering and a sha256 prefix", { skip: !cartBinding.hashCartBinding }, async () => {
+test("hashes objects with RFC 8785 property ordering and a sha256 prefix", async () => {
   assert.equal(await cartBinding.hashCartBinding({ b: 2, a: 1 }), "sha256:43258cff783fe7036d8a43033f830adfc60ec037382473548ac742b888292777");
 });

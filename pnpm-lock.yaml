@@ -7,6 +7,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      canonicalize:
+        specifier: 5.1.0
+        version: 5.1.0
     devDependencies:
       typescript:
         specifier: ^5.8.3
@@ -14,11 +18,18 @@ importers:
 
 packages:
 
+  canonicalize@5.1.0:
+    resolution: {integrity: sha512-bab9+WefZljqQ8jT0qRwVmTyzAUU63K97QIQD3agynIBrb6sa5M2eAy8Hv8K3p4V9+ONVYZKtGYl4Dg+/5Gumw==}
+    engines: {node: '>=22'}
+    hasBin: true
+
   typescript@5.9.3:
     resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
     engines: {node: '>=14.17'}
     hasBin: true
 
 snapshots:
+
+  canonicalize@5.1.0: {}
 
   typescript@5.9.3: {}

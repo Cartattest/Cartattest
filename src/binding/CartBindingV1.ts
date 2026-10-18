@@ -1,3 +1,4 @@
+import canonicalize from "canonicalize";
 import type {
   CartBindingItemV1,
   CartBindingV1,
@@ -103,10 +104,21 @@ export function mapPayPalOrderToBinding(value: unknown): CartBindingV1 {
  * - canonicalize with RFC 8785/JCS before SHA-256
  */
 export function assertBindingEqual(expected: CartBindingV1, actual: CartBindingV1): void {
-  // Builder TODO: canonical JCS comparison/hash, plus useful diff for demo/receipt.
-  if (JSON.stringify(expected) !== JSON.stringify(actual)) {
+  if (canonicalBinding(expected) !== canonicalBinding(actual)) {
     throw new Error("CART_BINDING_MISMATCH");
   }
+}
+
+export async function hashCartBinding(binding: CartBindingV1): Promise<string> {
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonicalBinding(binding)));
+  const hex = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `sha256:${hex}`;
+}
+
+function canonicalBinding(binding: CartBindingV1): string {
+  const serialized = canonicalize(binding);
+  if (serialized === undefined) throw new Error("CART_BINDING_NOT_JSON");
+  return serialized;
 }
 
 function shippingPreference(order: JsonObject): unknown {
