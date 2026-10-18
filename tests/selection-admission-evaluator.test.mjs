@@ -44,6 +44,10 @@ test("allows a supported claim grounded in authoritative technical evidence", as
 test("steps up when review support conflicts with technical evidence", async () => {
   const result = await evaluate("jacket-water-resistant-01", "blue-m", () => "SUPPORTED", true);
   assert.deepEqual(result.outcome, { status: "STEP_UP", claimIds: ["waterproof"] });
+  assert.equal(result.claimEvaluations.length, 1);
+  assert.equal(result.claimEvaluations[0].claim.claimId, "waterproof");
+  assert.equal(result.claimEvaluations[0].attestation.result, "SUPPORTED");
+  assert.ok(result.claimEvaluations[0].evidence.length > 0);
 });
 
 test("does not invoke the attestor when required evidence is missing", async () => {

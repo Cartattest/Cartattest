@@ -37,6 +37,7 @@ export type SelectionAdmissionResult =
       claimSet: ClaimSetV1;
       claimSetHash: Sha256;
       resolvedSelection: ResolvedSelection;
+      claimEvaluations: ClaimEvaluation[];
       admissionEvidence: {
         evidenceManifestVersion: string;
         evidenceSetHashes: Sha256[];
@@ -170,6 +171,7 @@ export async function evaluateSelectionAdmission(
     claimSet,
     claimSetHash: loaded.claimSetHash,
     resolvedSelection: resolved,
+    claimEvaluations: evaluations,
     admissionEvidence: {
       evidenceManifestVersion: profiles[0] ?? "none",
       evidenceSetHashes: [...new Set([...semanticEvidence.values()].map((value) => value.evidenceSetHash))].sort(),
