@@ -1,9 +1,12 @@
 import type {
   BuyerOverrideV1,
   CommerceClaim,
+  EvidenceManifestV1,
+  MerchantEvidenceV1,
   SemanticAttestationV1,
   Sha256
 } from "../domain/types.js";
+import { evaluateSourceAuthority } from "./SourceAuthorityPolicy.js";
 
 export type AdmissionOutcome =
   | { status: "ALLOW" }
@@ -16,6 +19,8 @@ export interface ClaimEvaluation {
   integrityValid: boolean;
   provenanceValid: boolean;
   evidenceComplete: boolean;
+  evidenceManifest?: EvidenceManifestV1;
+  evidence?: MerchantEvidenceV1[];
   claimSetHash: Sha256;
   subjectRef: string;
   subjectHash: Sha256;
@@ -76,9 +81,19 @@ export function evaluateAdmission(
       return { status: "BLOCK", reason: "ATTESTATION_BINDING_MISMATCH" };
     }
 
+    let sourceAuthorityNeedsStepUp = false;
+    if (evaluation.attestation) {
+      if (!evaluation.evidenceManifest || !evaluation.evidence) {
+        return { status: "BLOCK", reason: "SOURCE_AUTHORITY_FAILURE" };
+      }
+      const sourceOutcome = evaluateSourceAuthority(evaluation.attestation, evaluation.evidenceManifest, evaluation.evidence);
+      if (sourceOutcome === "BLOCK") return { status: "BLOCK", reason: "SOURCE_AUTHORITY_FAILURE" };
+      sourceAuthorityNeedsStepUp = sourceOutcome === "STEP_UP";
+    }
+
     if (evaluation.override) {
       if (claim.overridePolicy !== "HUMAN_EXACT_SUBJECT" ||
-          !isRelaxableFailure(evaluation) ||
+          (!isRelaxableFailure(evaluation) && !sourceAuthorityNeedsStepUp) ||
           !validOverride(evaluation, options.verifyOverride, now)) {
         return { status: "BLOCK", reason: "INVALID_OVERRIDE" };
       }
@@ -92,7 +107,7 @@ export function evaluateAdmission(
       continue;
     }
 
-    if (!evaluation.evidenceComplete || !evaluation.attestation || evaluation.attestation.result !== "SUPPORTED") {
+    if (!evaluation.evidenceComplete || !evaluation.attestation || evaluation.attestation.result !== "SUPPORTED" || sourceAuthorityNeedsStepUp) {
       stepUpClaimIds.push(claim.claimId);
     }
   }

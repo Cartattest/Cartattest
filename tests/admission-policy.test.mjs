@@ -35,6 +35,24 @@ test("allows a supported semantic claim only with complete evidence and valid pr
   assert.deepEqual(outcome, { status: "ALLOW" });
 });
 
+test("steps up when a lower-authority review supports but a technical spec contradicts", () => {
+  const evaluation = semanticEvaluation("SUPPORTED");
+  evaluation.attestation.supportQuotes = [{ evidenceId: "review", verbatim: "Totally waterproof" }];
+  evaluation.attestation.contradictionQuotes = [{ evidenceId: "spec", verbatim: "Not certified waterproof" }];
+  assert.deepEqual(evaluateAdmission([evaluation], { now }), { status: "STEP_UP", claimIds: ["waterproof"] });
+});
+
+test("blocks a source-authority BLOCK even when the buyer supplies an override", () => {
+  const evaluation = semanticEvaluation("SUPPORTED");
+  evaluation.evidenceManifest.contradictionPolicy = "BLOCK_EQUAL_OR_HIGHER_AUTHORITY";
+  evaluation.attestation.supportQuotes = [{ evidenceId: "spec", verbatim: "Waterproof shell" }];
+  evaluation.attestation.contradictionQuotes = [{ evidenceId: "spec", verbatim: "Not certified waterproof" }];
+  evaluation.override = overrideFor("waterproof");
+  assert.deepEqual(evaluateAdmission([evaluation], { now, verifyOverride: () => true }), {
+    status: "BLOCK", reason: "SOURCE_AUTHORITY_FAILURE"
+  });
+});
+
 test("a scoped exact-subject override permits the same frozen semantic attestation", () => {
   const evaluation = semanticEvaluation("CONTRADICTED");
   evaluation.override = overrideFor("waterproof");
@@ -94,6 +112,22 @@ function semanticEvaluation(result) {
     integrityValid: true,
     provenanceValid: true,
     evidenceComplete: true,
+    evidenceManifest: {
+      schemaVersion: "evidence-manifest-v1",
+      evidenceProfileId: "waterproof-v1",
+      requiredSourceClasses: ["MERCHANT_TECHNICAL_SPEC"],
+      admissibleSourceClasses: ["MERCHANT_TECHNICAL_SPEC", "CUSTOMER_REVIEW"],
+      sourceAuthority: [
+        { sourceClass: "MERCHANT_TECHNICAL_SPEC", rank: 90, maySatisfy: true, mayBlockIfContradictory: true },
+        { sourceClass: "CUSTOMER_REVIEW", rank: 20, maySatisfy: false, mayBlockIfContradictory: false }
+      ],
+      freshnessSeconds: 900,
+      contradictionPolicy: "STEP_UP_ON_EQUAL_OR_HIGHER_AUTHORITY"
+    },
+    evidence: [
+      { evidenceId: "spec", sourceClass: "MERCHANT_TECHNICAL_SPEC" },
+      { evidenceId: "review", sourceClass: "CUSTOMER_REVIEW" }
+    ],
     claimSetHash: hashes.claimSetHash,
     subjectRef: "jacket-1",
     subjectHash: hashes.subjectHash,
@@ -107,7 +141,7 @@ function semanticEvaluation(result) {
       evidenceSetHash: hashes.evidenceSetHash,
       evidenceHashes: ["sha256:evidence-record"],
       result,
-      supportQuotes: [],
+      supportQuotes: result === "SUPPORTED" ? [{ evidenceId: "spec", verbatim: "Waterproof shell" }] : [],
       contradictionQuotes: [],
       modelId: "test-model",
       attestorVersion: "test-v1",
