@@ -1,14 +1,29 @@
 # CartAttest
 
-CartAttest helps developers building PayPal-enabled commerce agents prevent an agent's interpretation of merchant evidence from silently becoming a payment action.
+CartAttest checks whether an AI shopping agent's product choice matches the buyer's constraints before creating a PayPal order. The current codebase contains the core TypeScript services and persistence layer for governed checkout.
 
-This repository is an early implementation scaffold. The current code includes domain contracts and an initial server-side PayPal Orders v2 adapter. Commerce admission, CartBindingV1 mapping and hashing, evidence-bundle verification, persistence, the buyer UI, and the complete Gate 0 characterization are still in progress. Keep the repository private until the collaborators agree on foreground IP ownership and an open-source license.
+## Implemented
+
+- Validated and hashed Claim Set storage.
+- Deterministic checks for merchant, SKU, variant, quantity, currency and budget claims.
+- Evidence completeness, freshness, source authority and semantic-attestation validation with process-local memoization.
+- PayPal Orders v2 gateway, CartBinding checks before and after buyer approval, and a persisted checkout admission.
+- Atomic capture attempts, GET-first reconciliation after uncertain capture responses, and verified, idempotent PayPal webhook handling.
+- Signed evidence-bundle creation and verification against an externally pinned key.
+- Dependency-injected API handlers and a versioned PostgreSQL schema.
+
+## Current limits
+
+This is not yet a runnable web application. The repository does not include a server listener, buyer screens, a configured semantic-attestor provider, or a deployed database. STEP-UP outcomes currently identify the affected claim IDs; the trusted buyer decision flow is still to be built. The fixture merchant is for development only.
+
+PayPal Sandbox characterization and end-to-end checkout have not been run. See [HOW_TO.md](HOW_TO.md) for owner setup and outstanding external inputs. Do not treat unit tests as evidence of a live PayPal or PostgreSQL flow.
 
 ## Requirements
 
-- Node.js 22 or newer
+- Node.js 22
 - pnpm 10.29.3
-- PayPal sandbox account and REST app credentials for the Gate 0 flow
+- PostgreSQL for repository and migration use
+- PayPal Sandbox credentials for Gate 0 and live checkout characterization
 
 ## Setup
 
@@ -18,25 +33,22 @@ pnpm install
 cp .env.example .env
 ```
 
-Fill in only the sandbox credentials needed for your task. Keep `.env` local; it is ignored by Git. The implementation currently reads PayPal credentials from the process environment when running the Gate 0 runner.
+Set `DATABASE_URL` before running migrations. Keep `.env` local and never commit credentials.
 
 ## Commands
 
 ```sh
 pnpm typecheck
-pnpm build
+pnpm test
+pnpm migrate
 pnpm gate0 -- create path/to/cart-binding.json
 pnpm gate0 -- get PAYPAL_ORDER_ID
 pnpm gate0 -- capture PAYPAL_ORDER_ID PERSISTED_REQUEST_ID
 pnpm gate0 -- patch PAYPAL_ORDER_ID path/to/patch.json
 ```
 
-The Gate 0 runner targets PayPal Sandbox only. It creates orders, returns the approval URL, reads order state, captures after approval, and applies JSON Patch operations for characterization. Review patch files carefully; they can mutate sandbox orders. Use the locally supplied `buildpack/spec/GATE0_PAYPAL_TEST_PLAN.md` to record characterization results. Do not save or publish unsanitized PayPal responses, payer data, or credentials.
-
-## Project material
-
-The ignored `buildpack/` directory contains the supplied handoff, specifications, schemas, and starter fixtures. It is intentionally excluded from version control per the project setup; preserve a local copy when cloning or transferring the project. The application source and package configuration live at the repository root.
+`pnpm migrate` applies the versioned checkout schema. Gate 0 uses PayPal Sandbox only. Review JSON Patch files before applying them because they mutate the named sandbox order. Record observations only after running the exact test against a sandbox account; the current Gate 0 summary remains unrun.
 
 ## Security boundary
 
-Shopping agents may propose identifiers only. They must not provide authoritative price or terms, evidence URLs, PayPal order IDs, payment operations, or buyer decisions. PayPal credentials and operations stay server-side.
+Shopping-agent selection requests accept identifiers only. Price, terms, evidence, source authority, buyer decisions, PayPal order IDs and payment operations are resolved or controlled by the server. PayPal credentials and checkout operations stay server-side.
