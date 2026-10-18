@@ -4,7 +4,7 @@ export type SubmitSelectionRequest = SelectionInput;
 
 export type SubmitSelectionResponse =
   | { status: "BLOCKED"; reason: string }
-  | { status: "STEP_UP"; admissionId: string; decisionUrl: string }
+  | { status: "STEP_UP"; claimIds: string[] }
   | { status: "ALLOWED"; admissionId: string; approvalUrl: string };
 
 export interface CompleteCheckoutRequest {

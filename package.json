@@ -15,9 +15,11 @@
     "gate0": "pnpm build && node --env-file=.env scripts/gate0.mjs"
   },
   "devDependencies": {
+    "@types/pg": "^8.23.1",
     "typescript": "^5.8.3"
   },
   "dependencies": {
-    "canonicalize": "5.1.0"
+    "canonicalize": "5.1.0",
+    "pg": "^8.23.1"
   }
 }
