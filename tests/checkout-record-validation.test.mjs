@@ -55,3 +55,12 @@ test("rejects invalid capture states, capture statuses and timestamps", () => {
   assert.throws(() => parseCaptureAttemptV1({ ...attempt, paypalCaptureStatus: "AUTHORIZED" }), { message: "INVALID_CAPTURE_ATTEMPT" });
   assert.throws(() => parseCaptureAttemptV1({ ...attempt, updatedAt: "not-a-date" }), { message: "INVALID_CAPTURE_ATTEMPT" });
 });
+
+test("rejects capture states that contradict their persisted PayPal status", () => {
+  assert.throws(() => parseCaptureAttemptV1({ ...attempt, state: "CAPTURE_COMPLETED_PENDING_WEBHOOK", paypalCaptureStatus: "FAILED" }), {
+    message: "INVALID_CAPTURE_ATTEMPT"
+  });
+  assert.throws(() => parseCaptureAttemptV1({ ...attempt, state: "CAPTURE_DECLINED", paypalCaptureStatus: "COMPLETED" }), {
+    message: "INVALID_CAPTURE_ATTEMPT"
+  });
+});

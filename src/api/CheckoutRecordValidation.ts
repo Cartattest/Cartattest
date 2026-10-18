@@ -35,10 +35,24 @@ export function parseCaptureAttemptV1(value: unknown): CaptureAttemptV1 {
       !nonempty(value.materialHash) || !nonempty(value.paypalRequestId) || !captureStates.includes(value.state as CaptureAttemptState) ||
       !validTime(value.createdAt) || !validTime(value.updatedAt) || Date.parse(value.updatedAt) < Date.parse(value.createdAt) ||
       (value.paypalCaptureId !== undefined && !nonempty(value.paypalCaptureId)) ||
-      (value.paypalCaptureStatus !== undefined && !captureStatuses.includes(value.paypalCaptureStatus as NonNullable<CaptureAttemptV1["paypalCaptureStatus"]>))) {
+      (value.paypalCaptureStatus !== undefined && !captureStatuses.includes(value.paypalCaptureStatus as NonNullable<CaptureAttemptV1["paypalCaptureStatus"]>)) ||
+      !captureStateMatchesStatus(value.state as CaptureAttemptState, value.paypalCaptureStatus)) {
     throw new Error("INVALID_CAPTURE_ATTEMPT");
   }
   return value as unknown as CaptureAttemptV1;
+}
+
+function captureStateMatchesStatus(state: CaptureAttemptState, status: unknown): boolean {
+  const requiredStatus: Partial<Record<CaptureAttemptState, NonNullable<CaptureAttemptV1["paypalCaptureStatus"]>>> = {
+    CAPTURE_PENDING: "PENDING",
+    CAPTURE_COMPLETED_PENDING_WEBHOOK: "COMPLETED",
+    CAPTURE_DECLINED: "DECLINED",
+    CAPTURE_FAILED: "FAILED",
+    CLOSED_VERIFIED_WEBHOOK: "COMPLETED",
+    CLOSED_RECONCILED: "COMPLETED"
+  };
+  if (state === "IN_FLIGHT") return status === undefined;
+  return requiredStatus[state] === undefined || requiredStatus[state] === status;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
