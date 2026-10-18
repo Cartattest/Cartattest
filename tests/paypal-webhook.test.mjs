@@ -52,6 +52,17 @@ test("duplicate event IDs do not reapply state changes", async () => {
   assert.equal(calls.some((call) => call.sql.startsWith("SELECT 'capture-attempt-v1'")), false);
 });
 
+test("rejects a duplicate event ID whose verified payload has changed", async () => {
+  const calls = [];
+  await assert.rejects(recordVerifiedPayPalWebhook(fakePool(calls, { duplicate: true, duplicateRow: {
+    eventType: "PAYMENT.CAPTURE.COMPLETED", orderId: "OTHER-ORDER", captureId: "CAPTURE-1", captureStatus: "COMPLETED"
+  } }), {
+    eventId: "WH-1", eventType: event.event_type, orderId: "ORDER-1", captureId: "CAPTURE-1",
+    captureStatus: "COMPLETED", verifiedAt: "2026-10-18T12:02:00.000Z"
+  }), { message: "WEBHOOK_EVENT_ID_CONFLICT" });
+  assert.equal(calls.at(-1).sql, "ROLLBACK");
+});
+
 test("closes a verified completion that arrives before the capture response is stored", async () => {
   const calls = [];
   const result = await recordVerifiedPayPalWebhook(fakePool(calls, { attempt: {
@@ -82,11 +93,14 @@ test("rejects malformed and oversized bodies before signature checks", async () 
   assert.equal(verifyCalls, 0);
 });
 
-function fakePool(calls, { attempt, duplicate = false }) {
+function fakePool(calls, { attempt, duplicate = false, duplicateRow = {
+  eventType: event.event_type, orderId: "ORDER-1", captureId: "CAPTURE-1", captureStatus: "COMPLETED"
+} }) {
   return { async connect() { return {
     async query(sql, values = []) {
       calls.push({ sql, values });
       if (sql.startsWith("INSERT INTO paypal_webhook_events")) return { rows: duplicate ? [] : [{ eventId: "WH-1" }] };
+      if (sql.startsWith("SELECT event_type AS")) return { rows: [duplicateRow] };
       if (sql.startsWith("SELECT 'capture-attempt-v1'")) return { rows: attempt ? [attempt] : [] };
       if (sql.startsWith("UPDATE capture_attempts SET state")) return { rows: [], rowCount: 1 };
       if (sql.startsWith("UPDATE admissions SET state = 'CLOSED'")) return { rows: [], rowCount: 1 };

@@ -35,6 +35,9 @@ export async function handlePayPalWebhookRequest(
     const message = error instanceof Error ? error.message : "PAYPAL_WEBHOOK_FAILED";
     if (["INVALID_PAYPAL_WEBHOOK_BODY", "INVALID_PAYPAL_WEBHOOK_EVENT", "PAYPAL_WEBHOOK_SIGNATURE_INVALID", "PAYPAL_WEBHOOK_HEADERS_INVALID"]
       .includes(message)) return json({ error: message }, 400);
+    if (message === "WEBHOOK_EVENT_ID_CONFLICT" || message === "WEBHOOK_CAPTURE_ID_MISMATCH") {
+      return json({ error: message }, 409);
+    }
     return json({ error: "PAYPAL_WEBHOOK_FAILED" }, 502);
   }
 }

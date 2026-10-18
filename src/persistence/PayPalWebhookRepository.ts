@@ -37,6 +37,17 @@ export async function recordVerifiedPayPalWebhook(
       [event.eventId, event.eventType, event.orderId ?? null, event.captureId ?? null, event.verifiedAt, payload]
     );
     if (!inserted.rows[0]) {
+      const existing = await client.query(
+        `SELECT event_type AS "eventType", paypal_order_id AS "orderId", paypal_capture_id AS "captureId",
+                payload->>'capture_status' AS "captureStatus"
+         FROM paypal_webhook_events WHERE event_id = $1`,
+        [event.eventId]
+      );
+      const stored = existing.rows[0];
+      if (!stored || stored.eventType !== event.eventType || stored.orderId !== (event.orderId ?? null) ||
+          stored.captureId !== (event.captureId ?? null) || stored.captureStatus !== (event.captureStatus ?? null)) {
+        throw new Error("WEBHOOK_EVENT_ID_CONFLICT");
+      }
       await client.query("COMMIT");
       inTransaction = false;
       return "DUPLICATE";
