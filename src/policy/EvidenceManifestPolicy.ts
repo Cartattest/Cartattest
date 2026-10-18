@@ -24,7 +24,7 @@ export function assessEvidenceManifest(
   manifest: EvidenceManifestV1,
   now: string
 ): EvidenceManifestAssessment {
-  assertManifest(manifest);
+  validateEvidenceManifest(manifest);
   if (!Array.isArray(evidence)) throw new Error("INVALID_MERCHANT_EVIDENCE");
   const nowMs = Date.parse(now);
   if (!Number.isFinite(nowMs)) throw new Error("INVALID_EVALUATION_TIME");
@@ -59,7 +59,7 @@ export function assessEvidenceManifest(
   };
 }
 
-function assertManifest(value: EvidenceManifestV1): void {
+export function validateEvidenceManifest(value: EvidenceManifestV1): void {
   if (!value || value.schemaVersion !== "evidence-manifest-v1" || !value.evidenceProfileId ||
       !Number.isInteger(value.freshnessSeconds) || value.freshnessSeconds < 1 ||
       (value.contradictionPolicy !== "BLOCK_EQUAL_OR_HIGHER_AUTHORITY" &&

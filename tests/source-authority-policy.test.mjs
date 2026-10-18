@@ -64,3 +64,18 @@ test("fails closed for unproven output or quotes from unknown evidence", () => {
     contradictionQuotes: []
   }, baseManifest, evidence), "BLOCK");
 });
+
+test("fails closed when the source authority manifest is malformed", () => {
+  const duplicateAuthority = {
+    ...baseManifest,
+    sourceAuthority: [
+      ...baseManifest.sourceAuthority,
+      { sourceClass: "MERCHANT_TECHNICAL_SPEC", rank: 0, maySatisfy: true, mayBlockIfContradictory: false }
+    ]
+  };
+  assert.equal(evaluateSourceAuthority({
+    result: "SUPPORTED",
+    supportQuotes: [{ evidenceId: "spec", verbatim: "Waterproof shell" }],
+    contradictionQuotes: []
+  }, duplicateAuthority, evidence), "BLOCK");
+});

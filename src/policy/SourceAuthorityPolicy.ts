@@ -1,4 +1,5 @@
 import type { EvidenceManifestV1, MerchantEvidenceV1, SemanticAttestationV1 } from "../domain/types.js";
+import { validateEvidenceManifest } from "./EvidenceManifestPolicy.js";
 
 export type SourceAuthorityOutcome = "ALLOW" | "STEP_UP" | "BLOCK";
 
@@ -11,6 +12,11 @@ export function evaluateSourceAuthority(
       !Array.isArray(manifest.admissibleSourceClasses) ||
       (manifest.contradictionPolicy !== "BLOCK_EQUAL_OR_HIGHER_AUTHORITY" &&
        manifest.contradictionPolicy !== "STEP_UP_ON_EQUAL_OR_HIGHER_AUTHORITY")) return "BLOCK";
+  try {
+    validateEvidenceManifest(manifest);
+  } catch {
+    return "BLOCK";
+  }
 
   const authority = new Map(manifest.sourceAuthority.map((rule) => [rule?.sourceClass, rule]));
   const admissible = new Set(manifest.admissibleSourceClasses);
