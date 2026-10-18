@@ -1,0 +1,45 @@
+import type { CaptureAttemptState } from "../domain/types.js";
+
+export type CaptureEvent =
+  | "DISPATCH"
+  | "AMBIGUOUS_RESPONSE"
+  | "PAYPAL_COMPLETED"
+  | "PAYPAL_PENDING"
+  | "PAYPAL_DECLINED"
+  | "PAYPAL_FAILED"
+  | "WEBHOOK_VERIFIED"
+  | "RECONCILED_COMPLETED";
+
+export function nextCaptureState(state: CaptureAttemptState, event: CaptureEvent): CaptureAttemptState {
+  const table: Partial<Record<CaptureAttemptState, Partial<Record<CaptureEvent, CaptureAttemptState>>>> = {
+    IN_FLIGHT: {
+      AMBIGUOUS_RESPONSE: "EXECUTION_UNKNOWN",
+      PAYPAL_COMPLETED: "CAPTURE_COMPLETED_PENDING_WEBHOOK",
+      PAYPAL_PENDING: "CAPTURE_PENDING",
+      PAYPAL_DECLINED: "CAPTURE_DECLINED",
+      PAYPAL_FAILED: "CAPTURE_FAILED"
+    },
+    EXECUTION_UNKNOWN: {
+      PAYPAL_COMPLETED: "CAPTURE_COMPLETED_PENDING_WEBHOOK",
+      PAYPAL_PENDING: "CAPTURE_PENDING",
+      PAYPAL_DECLINED: "CAPTURE_DECLINED",
+      PAYPAL_FAILED: "CAPTURE_FAILED",
+      RECONCILED_COMPLETED: "CLOSED_RECONCILED"
+    },
+    CAPTURE_PENDING: {
+      PAYPAL_COMPLETED: "CAPTURE_COMPLETED_PENDING_WEBHOOK",
+      PAYPAL_DECLINED: "CAPTURE_DECLINED",
+      PAYPAL_FAILED: "CAPTURE_FAILED",
+      WEBHOOK_VERIFIED: "CLOSED_VERIFIED_WEBHOOK",
+      RECONCILED_COMPLETED: "CLOSED_RECONCILED"
+    },
+    CAPTURE_COMPLETED_PENDING_WEBHOOK: {
+      WEBHOOK_VERIFIED: "CLOSED_VERIFIED_WEBHOOK",
+      RECONCILED_COMPLETED: "CLOSED_RECONCILED"
+    }
+  };
+
+  const next = table[state]?.[event];
+  if (!next) throw new Error(`INVALID_CAPTURE_TRANSITION ${state} -> ${event}`);
+  return next;
+}
