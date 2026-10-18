@@ -48,20 +48,54 @@ function parseClaim(value: unknown): CommerceClaim {
 
   const kind = value.kind as CommerceClaim["kind"];
   const overridePolicy = value.overridePolicy as CommerceClaim["overridePolicy"];
+  const operator = (value.operator ?? "SUPPORTED") as CommerceClaim["operator"];
   if (overridePolicy === "HUMAN_EXACT_SUBJECT" && kind !== "SEMANTIC_BOOLEAN" && kind !== "SEMANTIC_TEXT") {
     throw new Error("INVALID_CLAIM_SET");
   }
+  if (!validClaimSemantics(kind, operator, value.value, value.currency, value.evidenceProfileId)) throw new Error("INVALID_CLAIM_SET");
 
   return {
     claimId: value.claimId,
     kind,
     humanText: value.humanText,
-    operator: (value.operator ?? "SUPPORTED") as CommerceClaim["operator"],
+    operator,
     value: value.value as string | number | boolean,
     ...(value.currency === undefined ? {} : { currency: value.currency as string }),
     ...(value.evidenceProfileId === undefined ? {} : { evidenceProfileId: value.evidenceProfileId as string }),
     overridePolicy
   };
+}
+
+function validClaimSemantics(
+  kind: CommerceClaim["kind"],
+  operator: CommerceClaim["operator"],
+  value: unknown,
+  currency: unknown,
+  evidenceProfileId: unknown
+): boolean {
+  switch (kind) {
+    case "BUDGET_MAX":
+      return operator === "LTE" && typeof value === "number" && value >= 0 && currency !== undefined;
+    case "MERCHANT_EXACT":
+    case "SKU_EXACT":
+    case "VARIANT_EXACT":
+      return operator === "EQ" && nonempty(value) && evidenceProfileId === undefined;
+    case "QUANTITY_EXACT":
+      return operator === "EQ" && typeof value === "number" && Number.isSafeInteger(value) && value >= 1 && evidenceProfileId === undefined;
+    case "CURRENCY_EXACT":
+      return operator === "EQ" && typeof value === "string" && /^[A-Z]{3}$/.test(value) && evidenceProfileId === undefined;
+    case "TEMPORAL_MAX":
+      return operator === "BEFORE_OR_AT" && validDateTime(value) && evidenceProfileId === undefined;
+    case "SEMANTIC_BOOLEAN":
+      return operator === "SUPPORTED" && typeof value === "boolean" && nonempty(evidenceProfileId);
+    case "SEMANTIC_TEXT":
+      return operator === "SUPPORTED" && nonempty(value) && nonempty(evidenceProfileId);
+  }
+}
+
+function validDateTime(value: unknown): value is string {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value) &&
+    Number.isFinite(Date.parse(value));
 }
 
 function parseSignature(value: unknown): Es256Signature {

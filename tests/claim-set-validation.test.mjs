@@ -66,3 +66,18 @@ test("requires a nonempty lifetime and a valid optional signature shape", () => 
     message: "INVALID_CLAIM_SET"
   });
 });
+
+test("rejects claim values and operators that do not match the claim kind", () => {
+  assert.throws(() => parseClaimSetV1({ ...claimSet, claims: [{ ...claimSet.claims[1], operator: "EQ" }] }), {
+    message: "INVALID_CLAIM_SET"
+  });
+  assert.throws(() => parseClaimSetV1({ ...claimSet, claims: [{ claimId: "quantity", kind: "QUANTITY_EXACT", humanText: "Two", operator: "EQ", value: 1.5, overridePolicy: "NEVER" }] }), {
+    message: "INVALID_CLAIM_SET"
+  });
+  assert.throws(() => parseClaimSetV1({ ...claimSet, claims: [{ ...claimSet.claims[0], value: "true" }] }), {
+    message: "INVALID_CLAIM_SET"
+  });
+  assert.throws(() => parseClaimSetV1({ ...claimSet, claims: [{ claimId: "delivery", kind: "TEMPORAL_MAX", humanText: "By date", operator: "BEFORE_OR_AT", value: "tomorrow", overridePolicy: "NEVER" }] }), {
+    message: "INVALID_CLAIM_SET"
+  });
+});
