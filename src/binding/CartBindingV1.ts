@@ -1,4 +1,5 @@
 import canonicalize from "canonicalize";
+import { sha256 } from "../domain/Hash.js";
 import type {
   CartBindingItemV1,
   CartBindingV1,
@@ -111,9 +112,7 @@ export function assertBindingEqual(expected: CartBindingV1, actual: CartBindingV
 }
 
 export async function hashCartBinding(binding: CartBindingV1): Promise<Sha256> {
-  const digest = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonicalBinding(binding)));
-  const hex = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
-  return `sha256:${hex}`;
+  return sha256(canonicalBinding(binding));
 }
 
 function canonicalBinding(binding: CartBindingV1): string {

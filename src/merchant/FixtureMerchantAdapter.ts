@@ -1,5 +1,6 @@
 import canonicalize from "canonicalize";
 import { hashCartBinding } from "../binding/CartBindingV1.js";
+import { sha256 } from "../domain/Hash.js";
 import type { CartBindingV1, EvidenceManifestV1, MerchantEvidenceV1, SourceClass } from "../domain/types.js";
 import type { MerchantAdapter, ResolvedSelection, SelectionInput } from "../ports/MerchantAdapter.js";
 
@@ -119,12 +120,6 @@ async function hashJson(value: unknown): Promise<`sha256:${string}`> {
   const canonical = canonicalize(value);
   if (canonical === undefined) throw new Error("VALUE_NOT_JSON");
   return sha256(canonical);
-}
-
-async function sha256(value: string): Promise<`sha256:${string}`> {
-  const digest = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  const hex = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
-  return `sha256:${hex}`;
 }
 
 function toMinorUnits(value: string): bigint {
