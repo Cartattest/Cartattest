@@ -48,7 +48,8 @@ export async function completeCheckout(input: unknown, dependencies: CompleteChe
     updatedAt: createdAt.toISOString()
   }, createdAt.toISOString());
 
-  if (attempt.state === "EXECUTION_UNKNOWN" || attempt.state === "CAPTURE_PENDING") {
+  if (attempt.state === "EXECUTION_UNKNOWN" || attempt.state === "CAPTURE_PENDING" ||
+      attempt.state === "CAPTURE_COMPLETED_PENDING_WEBHOOK") {
     return reconcileCapture(dependencies, attempt);
   }
   if (attempt.state !== "IN_FLIGHT") return attempt;
@@ -92,6 +93,7 @@ async function reconcileCapture(
     if (reported.status === "COMPLETED") {
       return transitionCaptureAttempt(dependencies.pool, attempt.attemptId, "RECONCILED_COMPLETED", now.toISOString(), reported.id);
     }
+    if (attempt.state === "CAPTURE_COMPLETED_PENDING_WEBHOOK") return attempt;
     if (reported.status !== "PENDING" && reported.status !== "DECLINED" && reported.status !== "FAILED") return attempt;
     const event = { PENDING: "PAYPAL_PENDING", DECLINED: "PAYPAL_DECLINED", FAILED: "PAYPAL_FAILED" } as const;
     if ((attempt.state === "CAPTURE_PENDING" && reported.status === "PENDING") ||

@@ -62,6 +62,18 @@ test("reconciles a completed unknown capture from PayPal before another capture"
   assert.equal(calls.filter((call) => call === "paypal-capture").length, 0);
 });
 
+test("closes a completed capture by GET reconciliation when its webhook is missing", async () => {
+  const calls = [];
+  const completed = { ...captureAttempt("CAPTURE_COMPLETED_PENDING_WEBHOOK"), paypalCaptureId: "CAPTURE-1", paypalCaptureStatus: "COMPLETED" };
+  const result = await completeCheckout({ admissionId: "admission-1" }, {
+    pool: fakePool(calls, { admissionRow, existingAttempt: completed }),
+    gateway: gateway(calls, { reconcileRaw: paypalOrder("COMPLETED", [{ id: "CAPTURE-1", status: "COMPLETED" }]) }),
+    newId: () => "must-not-be-used", now: () => new Date(now)
+  });
+  assert.equal(result.state, "CLOSED_RECONCILED");
+  assert.equal(calls.filter((call) => call === "paypal-capture").length, 0);
+});
+
 test("retries only after GET confirms an unknown order is still approved, reusing its request ID", async () => {
   const calls = [];
   const unknown = captureAttempt("EXECUTION_UNKNOWN");
