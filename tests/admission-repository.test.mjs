@@ -52,6 +52,7 @@ test("loads an unexpired admission with its server-side order and binding", asyn
   const row = {
     ...record,
     paypalOrderId: "order-1",
+    admissionState: "AWAITING_APPROVAL",
     subjectRef,
     admittedCartBinding
   };

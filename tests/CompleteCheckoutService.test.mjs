@@ -74,6 +74,18 @@ test("closes a completed capture by GET reconciliation when its webhook is missi
   assert.equal(calls.filter((call) => call === "paypal-capture").length, 0);
 });
 
+test("recovers a persisted IN_FLIGHT attempt after expiry without rechecking Binding B", async () => {
+  const calls = [];
+  const interrupted = captureAttempt("IN_FLIGHT");
+  const result = await completeCheckout({ admissionId: "admission-1" }, {
+    pool: fakePool(calls, { admissionRow: { ...admissionRow, expiresAt: "2026-10-18T12:01:00.000Z" }, existingAttempt: interrupted }),
+    gateway: gateway(calls, { reconcileRaw: paypalOrder("COMPLETED", [{ id: "CAPTURE-1", status: "COMPLETED" }]) }),
+    newId: () => "unused-on-recovery", now: () => new Date(now)
+  });
+  assert.equal(result.state, "CLOSED_RECONCILED");
+  assert.deepEqual(calls.filter((call) => typeof call === "string"), ["paypal-get"]);
+});
+
 test("retries only after GET confirms an unknown order is still approved, reusing its request ID", async () => {
   const calls = [];
   const unknown = captureAttempt("EXECUTION_UNKNOWN");
@@ -82,7 +94,7 @@ test("retries only after GET confirms an unknown order is still approved, reusin
     gateway: gateway(calls),
     newId: () => "must-not-be-used", now: () => new Date(now)
   });
-  assert.deepEqual(calls.filter((call) => typeof call === "string"), ["paypal-get", "paypal-get", "paypal-capture"]);
+  assert.deepEqual(calls.filter((call) => typeof call === "string"), ["paypal-get", "paypal-capture"]);
   assert.ok(calls.some((call) => Array.isArray(call) && call[0] === "capture-request-id" && call[1] === unknown.paypalRequestId));
 });
 
@@ -91,7 +103,9 @@ function fakePool(calls, { admissionRow, existingAttempt }) {
   return { async connect() { return {
     async query(sql, values = []) {
       const call = { sql, values }; calls.push(call);
-      if (sql.includes("FROM admissions a JOIN claim_sets cs")) return { rows: [admissionRow] };
+      if (sql.includes("FROM admissions a JOIN claim_sets cs")) return { rows: [{
+        ...admissionRow, admissionState: admissionRow.admissionState ?? (existingAttempt ? "CAPTURE_STARTED" : "AWAITING_APPROVAL")
+      }] };
       if (sql.startsWith("SELECT 'capture-attempt-v1'")) return { rows: attempt ? [attempt] : [] };
       if (sql.startsWith("SELECT admission_id FROM admissions")) return { rows: [{ admissionId: "admission-1" }] };
       if (sql.startsWith("INSERT INTO capture_attempts")) { attempt = {
@@ -113,7 +127,7 @@ function gateway(calls, { drift = false, failCapture = false, reconcileRaw, capt
   if (drift) raw.purchase_units[0].items[0].sku = "OTHER";
   let gets = 0;
   return {
-    async getOrder() { calls.push("paypal-get"); gets++; return { orderId: "ORDER-1", orderStatus: gets > 1 && reconcileRaw ? "COMPLETED" : "APPROVED", raw: gets > 1 && reconcileRaw ? reconcileRaw : raw }; },
+    async getOrder() { calls.push("paypal-get"); gets++; return { orderId: "ORDER-1", orderStatus: reconcileRaw ? "COMPLETED" : "APPROVED", raw: reconcileRaw ?? raw }; },
     async captureOrder(orderId, requestId) { calls.push("paypal-capture", ["capture-request-id", requestId]); captureRequestIds?.push(requestId); if (failCapture) throw new Error("network timeout");
       return { httpStatus: 201, orderId: "ORDER-1", captureId: "CAPTURE-1", captureStatus: "COMPLETED", raw: {} }; }
   };

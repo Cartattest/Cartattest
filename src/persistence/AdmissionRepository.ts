@@ -129,7 +129,7 @@ export async function loadAwaitingAdmission(
   pool: SqlPool,
   admissionId: string,
   now: string
-): Promise<{ record: AdmissionRecordV1; subjectRef: string; admittedCartBinding: CartBindingV1 }> {
+): Promise<{ record: AdmissionRecordV1; subjectRef: string; admittedCartBinding: CartBindingV1; admissionState: "AWAITING_APPROVAL" | "CAPTURE_STARTED" }> {
   if (typeof admissionId !== "string" || !admissionId.trim() || !Number.isFinite(Date.parse(now))) {
     throw new Error("INVALID_ADMISSION_ID");
   }
@@ -144,23 +144,29 @@ export async function loadAwaitingAdmission(
               a.policy_version AS "policyVersion", a.cart_binding_profile AS "cartBindingProfile",
               a.admitted_cart_binding_hash AS "admittedCartBindingHash", a.paypal_order_id AS "paypalOrderId",
               'ALLOW' AS outcome, a.created_at::text AS "createdAt", a.expires_at::text AS "expiresAt",
+              a.state AS "admissionState",
               a.subject_ref AS "subjectRef", a.admitted_cart_binding AS "admittedCartBinding"
        FROM admissions a JOIN claim_sets cs ON cs.claim_set_id = a.claim_set_id
-       WHERE a.admission_id = $1 AND a.state = 'AWAITING_APPROVAL' AND a.expires_at > $2`,
+       WHERE a.admission_id = $1 AND (a.state = 'CAPTURE_STARTED' OR
+             (a.state = 'AWAITING_APPROVAL' AND a.expires_at > $2))`,
       [admissionId, now]
     );
     const row = result.rows[0];
     if (!row) throw new Error("ADMISSION_NOT_CAPTUREABLE");
-    const { subjectRef, admittedCartBinding, ...recordFields } = row;
+    const { subjectRef, admittedCartBinding, admissionState, ...recordFields } = row;
     if (typeof subjectRef !== "string" || !subjectRef.trim() || !isRecord(admittedCartBinding)) throw new Error("INVALID_ADMISSION_RECORD");
     const record = parseAdmissionRecordV1(recordFields);
+    if (admissionState !== "AWAITING_APPROVAL" && admissionState !== "CAPTURE_STARTED") {
+      throw new Error("INVALID_ADMISSION_RECORD");
+    }
     if (await hashCartBinding(admittedCartBinding as unknown as CartBindingV1) !== record.admittedCartBindingHash) {
       throw new Error("ADMISSION_INTEGRITY_FAILURE");
     }
     return {
       record,
       subjectRef,
-      admittedCartBinding: admittedCartBinding as unknown as CartBindingV1
+      admittedCartBinding: admittedCartBinding as unknown as CartBindingV1,
+      admissionState
     };
   } finally {
     client.release();

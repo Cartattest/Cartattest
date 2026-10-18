@@ -19,26 +19,29 @@ export async function completeCheckout(input: unknown, dependencies: CompleteChe
   const now = dependencies.now?.() ?? new Date();
   if (!Number.isFinite(now.getTime())) throw new Error("INVALID_POLICY_TIME");
   const admission = await loadAwaitingAdmission(dependencies.pool, admissionId, now.toISOString());
-  try {
-    await checkApprovedOrderBinding(
-      dependencies.gateway,
-      admission.record.paypalOrderId,
-      admission.admittedCartBinding,
-      admission.record.expiresAt,
-      now.getTime()
-    );
-  } catch (error) {
-    if (error instanceof Error && ["CART_BINDING_MISMATCH", "PAYPAL_ORDER_ID_MISMATCH"].includes(error.message)) {
-      try { await abortAwaitingAdmission(dependencies.pool, admissionId); } catch { /* Preserve the Binding B failure. */ }
+  if (admission.admissionState === "AWAITING_APPROVAL") {
+    try {
+      await checkApprovedOrderBinding(
+        dependencies.gateway,
+        admission.record.paypalOrderId,
+        admission.admittedCartBinding,
+        admission.record.expiresAt,
+        now.getTime()
+      );
+    } catch (error) {
+      if (error instanceof Error && ["CART_BINDING_MISMATCH", "PAYPAL_ORDER_ID_MISMATCH"].includes(error.message)) {
+        try { await abortAwaitingAdmission(dependencies.pool, admissionId); } catch { /* Preserve the Binding B failure. */ }
+      }
+      throw error;
     }
-    throw error;
   }
 
   const createdAt = dependencies.now?.() ?? new Date();
   if (!Number.isFinite(createdAt.getTime())) throw new Error("INVALID_POLICY_TIME");
+  const newAttemptId = dependencies.newId();
   const attempt = await startCaptureAttempt(dependencies.pool, {
     schemaVersion: "capture-attempt-v1",
-    attemptId: dependencies.newId(),
+    attemptId: newAttemptId,
     admissionId,
     paypalOrderId: admission.record.paypalOrderId,
     materialHash: await hashCartBinding(admission.admittedCartBinding),
@@ -48,7 +51,7 @@ export async function completeCheckout(input: unknown, dependencies: CompleteChe
     updatedAt: createdAt.toISOString()
   }, createdAt.toISOString());
 
-  if (attempt.state === "EXECUTION_UNKNOWN" || attempt.state === "CAPTURE_PENDING" ||
+  if (attempt.attemptId !== newAttemptId || attempt.state === "EXECUTION_UNKNOWN" || attempt.state === "CAPTURE_PENDING" ||
       attempt.state === "CAPTURE_COMPLETED_PENDING_WEBHOOK") {
     return reconcileCapture(dependencies, attempt);
   }
@@ -100,7 +103,7 @@ async function reconcileCapture(
         (attempt.state === "CAPTURE_PENDING" && reported.status === attempt.paypalCaptureStatus)) return attempt;
     return transitionCaptureAttempt(dependencies.pool, attempt.attemptId, event[reported.status], now.toISOString(), reported.id);
   }
-  return attempt.state === "EXECUTION_UNKNOWN" && current.orderStatus === "APPROVED"
+  return (attempt.state === "IN_FLIGHT" || attempt.state === "EXECUTION_UNKNOWN") && current.orderStatus === "APPROVED"
     ? capture(dependencies, attempt)
     : attempt;
 }
