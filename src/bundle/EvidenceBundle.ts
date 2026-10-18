@@ -19,6 +19,51 @@ export interface EvidenceBundleV1 {
   seal: BundleSealV1;
 }
 
+export async function createEvidenceBundle(args: {
+  bundleId: string;
+  events: Array<{ recordType: string; payload: unknown }>;
+  seal: Pick<BundleSealV1, "closureState" | "sealedAt"> & Partial<Pick<BundleSealV1, "orderId" | "captureId">>;
+  keyId: string;
+  privateKey: CryptoKey;
+}): Promise<EvidenceBundleV1> {
+  if (!nonempty(args.bundleId) || !nonempty(args.keyId) || !Array.isArray(args.events) || args.events.length === 0 ||
+      args.privateKey.algorithm.name !== "ECDSA" || !("namedCurve" in args.privateKey.algorithm) ||
+      args.privateKey.algorithm.namedCurve !== "P-256" || !args.privateKey.usages.includes("sign")) {
+    throw new Error("INVALID_BUNDLE_CREATION_INPUT");
+  }
+
+  const records: BundleRecord[] = [];
+  let previousEventHash: Sha256 | null = null;
+  for (const [index, event] of args.events.entries()) {
+    if (!event || !nonempty(event.recordType)) throw new Error("INVALID_BUNDLE_CREATION_INPUT");
+    const payload = canonicalize(event.payload);
+    if (payload === undefined) throw new Error("INVALID_BUNDLE_CREATION_INPUT");
+    const payloadHash = await sha256(payload);
+    const signedRecord = { bundleId: args.bundleId, index, recordType: event.recordType, payloadHash, previousEventHash, keyId: args.keyId };
+    const signatureB64 = await sign(signedRecord, args.privateKey);
+    records.push({ index, recordType: event.recordType, payload: event.payload, payloadHash, previousEventHash, keyId: args.keyId, signatureB64 });
+    const eventHashInput = canonicalize({ ...signedRecord, signatureB64 });
+    if (eventHashInput === undefined) throw new Error("INVALID_BUNDLE_CREATION_INPUT");
+    previousEventHash = await sha256(eventHashInput);
+  }
+
+  const unsignedSeal = {
+    schemaVersion: "bundle-seal-v1" as const,
+    bundleId: args.bundleId,
+    recordCount: records.length,
+    terminalEventHash: previousEventHash!,
+    ...(args.seal.orderId === undefined ? {} : { orderId: args.seal.orderId }),
+    ...(args.seal.captureId === undefined ? {} : { captureId: args.seal.captureId }),
+    closureState: args.seal.closureState,
+    sealedAt: args.seal.sealedAt,
+    keyId: args.keyId
+  };
+  const signedSeal: BundleSealV1 = { ...unsignedSeal, signatureB64: await sign(unsignedSeal, args.privateKey) };
+  const bundle: EvidenceBundleV1 = { schemaVersion: "evidence-bundle-v1", bundleId: args.bundleId, records, seal: signedSeal };
+  verifyBundleShape(bundle);
+  return bundle;
+}
+
 /**
  * Offline verification MUST obtain the trusted CartAttest service public key from outside the bundle
  * (repo/config/CLI argument or other pinned distribution channel). Never trust a key embedded only in the bundle.
@@ -101,6 +146,23 @@ async function verifySignature(
     valid = false;
   }
   if (!valid) throw new Error("BUNDLE_SIGNATURE_INVALID");
+}
+
+async function sign(value: unknown, privateKey: CryptoKey): Promise<string> {
+  const canonical = canonicalize(value);
+  if (canonical === undefined) throw new Error("INVALID_BUNDLE_CREATION_INPUT");
+  const message = new TextEncoder().encode(canonical);
+  const messageBuffer = new ArrayBuffer(message.byteLength);
+  new Uint8Array(messageBuffer).set(message);
+  try {
+    const signature = new Uint8Array(await globalThis.crypto.subtle.sign(
+      { name: "ECDSA", hash: "SHA-256" }, privateKey, messageBuffer
+    ));
+    if (signature.byteLength !== 64) throw new Error("INVALID_BUNDLE_SIGNING_KEY");
+    return btoa(String.fromCharCode(...signature));
+  } catch {
+    throw new Error("BUNDLE_SIGNING_FAILED");
+  }
 }
 
 function decodeBase64(value: string): Uint8Array {
