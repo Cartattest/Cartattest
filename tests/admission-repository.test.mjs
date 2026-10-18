@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { abortAdmission, attachPaypalOrderAfterBindingA, createAdmission, loadAwaitingAdmission } from "../dist/persistence/AdmissionRepository.js";
+import { abortAdmission, attachPaypalOrderAfterBindingA, createAdmission, loadAwaitingAdmission, loadCheckoutStatus } from "../dist/persistence/AdmissionRepository.js";
 import { hashCartBinding } from "../dist/binding/CartBindingV1.js";
 
 const binding = { schemaVersion: "cart-binding-v1", intent: "CAPTURE", purchaseUnitCount: 1 };
@@ -65,6 +65,19 @@ test("aborts an admission that cannot complete order creation", async () => {
   await abortAdmission(pool, "admission-1");
   assert.match(calls[0].sql, /SET state = 'ABORTED'/);
   assert.match(calls[0].sql, /state = 'CREATING_ORDER'/);
+});
+
+test("loads checkout status without exposing the PayPal order ID", async () => {
+  const { pool, calls } = fakePool([{ rows: [{
+    admissionState: "CAPTURE_STARTED", expiresAt: admission.expiresAt,
+    captureState: "CAPTURE_PENDING", captureStatus: "PENDING"
+  }] }]);
+  const status = await loadCheckoutStatus(pool, "admission-1");
+  assert.deepEqual(status, {
+    admissionState: "CAPTURE_STARTED", expiresAt: admission.expiresAt,
+    capture: { state: "CAPTURE_PENDING", status: "PENDING" }
+  });
+  assert.doesNotMatch(calls[0].sql, /paypal_order_id/);
 });
 
 function fakePool(results) {

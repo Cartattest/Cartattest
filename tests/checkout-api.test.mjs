@@ -53,6 +53,18 @@ test("rejects caller-supplied facts and enforces bounded JSON routes", async () 
   assert.equal(connects, 0);
 });
 
+test("exposes read-only checkout state by admission ID without a PayPal order ID", async () => {
+  const deps = dependencies({ async connect() { return {
+    async query() { return { rows: [{ admissionState: "AWAITING_APPROVAL", expiresAt: "2026-10-18T12:15:00.000Z", captureState: null, captureStatus: null }] }; },
+    release() {}
+  }; } });
+  const response = await handleCheckoutApiRequest(new Request("https://service.example/api/checkouts/admission-1"), deps);
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.deepEqual(body, { admissionState: "AWAITING_APPROVAL", expiresAt: "2026-10-18T12:15:00.000Z" });
+  assert.equal("paypalOrderId" in body, false);
+});
+
 function post(path, body) {
   return new Request(`https://service.example${path}`, {
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body)

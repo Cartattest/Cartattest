@@ -72,6 +72,41 @@ export async function abortAdmission(pool: SqlPool, admissionId: string): Promis
   }
 }
 
+export async function loadCheckoutStatus(
+  pool: SqlPool,
+  admissionId: string
+): Promise<{ admissionState: "AWAITING_APPROVAL" | "CAPTURE_STARTED" | "CLOSED" | "ABORTED"; expiresAt: string; capture?: {
+  state: string; status?: string
+} }> {
+  if (typeof admissionId !== "string" || !admissionId.trim()) throw new Error("INVALID_ADMISSION_ID");
+  const client = await pool.connect();
+  try {
+    const result = await client.query(
+      `SELECT a.state AS "admissionState", a.expires_at::text AS "expiresAt",
+              ca.state AS "captureState", ca.paypal_capture_status AS "captureStatus"
+       FROM admissions a LEFT JOIN capture_attempts ca ON ca.admission_id = a.admission_id
+       WHERE a.admission_id = $1 ORDER BY ca.created_at DESC LIMIT 1`,
+      [admissionId]
+    );
+    const row = result.rows[0];
+    if (!row) throw new Error("ADMISSION_NOT_FOUND");
+    if (!(["AWAITING_APPROVAL", "CAPTURE_STARTED", "CLOSED", "ABORTED"] as unknown[]).includes(row.admissionState) ||
+        typeof row.expiresAt !== "string" || !Number.isFinite(Date.parse(row.expiresAt)) ||
+        (row.captureState !== null && typeof row.captureState !== "string") ||
+        (row.captureStatus !== null && typeof row.captureStatus !== "string")) throw new Error("ADMISSION_INTEGRITY_FAILURE");
+    return {
+      admissionState: row.admissionState as "AWAITING_APPROVAL" | "CAPTURE_STARTED" | "CLOSED" | "ABORTED",
+      expiresAt: row.expiresAt,
+      ...(typeof row.captureState === "string" ? { capture: {
+        state: row.captureState,
+        ...(typeof row.captureStatus === "string" ? { status: row.captureStatus } : {})
+      } } : {})
+    };
+  } finally {
+    client.release();
+  }
+}
+
 export async function loadAwaitingAdmission(
   pool: SqlPool,
   admissionId: string,

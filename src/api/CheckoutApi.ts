@@ -7,6 +7,7 @@ import type { PayPalGateway } from "../ports/PayPalGateway.js";
 import type { PayPalWebhookVerifier } from "../application/PayPalWebhookService.js";
 import type { SqlPool } from "../persistence/CaptureAttemptRepository.js";
 import { loadClaimSet, saveClaimSet } from "../persistence/ClaimSetRepository.js";
+import { loadCheckoutStatus } from "../persistence/AdmissionRepository.js";
 
 const maxRequestBytes = 128_000;
 
@@ -25,6 +26,20 @@ export async function handleCheckoutApiRequest(request: Request, dependencies: C
       webhookId: dependencies.webhookId, verifier: dependencies.gateway, pool: dependencies.pool,
       ...(dependencies.selection.now ? { now: dependencies.selection.now } : {})
     });
+  }
+  const statusMatch = /^\/api\/checkouts\/([^/]+)$/.exec(path);
+  if (statusMatch) {
+    if (request.method !== "GET") return json({ error: "METHOD_NOT_ALLOWED" }, 405, { Allow: "GET" });
+    let admissionId: string;
+    try { admissionId = decodeURIComponent(statusMatch[1]!); }
+    catch { return json({ error: "INVALID_ADMISSION_ID" }, 400); }
+    try { return json(await loadCheckoutStatus(dependencies.pool, admissionId), 200); }
+    catch (error) {
+      const message = error instanceof Error ? error.message : "CHECKOUT_FAILED";
+      if (message === "INVALID_ADMISSION_ID") return json({ error: message }, 400);
+      if (message === "ADMISSION_NOT_FOUND") return json({ error: message }, 404);
+      return json({ error: "CHECKOUT_FAILED" }, 500);
+    }
   }
   const methods: Record<string, string> = {
     "/api/claim-sets": "POST", "/api/selections": "POST", "/api/checkout/complete": "POST"
