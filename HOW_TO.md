@@ -74,4 +74,4 @@ pnpm install
 pnpm gate0 -- create path/to/cart-binding.json
 ```
 
-The command creates a sandbox order and prints its approval URL. After approving it in the sandbox buyer account, use the returned order ID with the `get`/`capture` commands in [README.md](README.md). The other variables are currently documentary placeholders; adding them to `.env` does not configure features that have not been built.
+The command creates a sandbox order and prints its approval URL. After approving it in the sandbox buyer account, use the returned order ID with the `get`, `capture`, and `patch` commands in [README.md](README.md). A patch file is a JSON array of PayPal JSON Patch operations; review it before running because it changes the named sandbox order. The other variables are currently documentary placeholders; adding them to `.env` does not configure features that have not been built.

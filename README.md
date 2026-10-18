@@ -28,9 +28,10 @@ pnpm build
 pnpm gate0 -- create path/to/cart-binding.json
 pnpm gate0 -- get PAYPAL_ORDER_ID
 pnpm gate0 -- capture PAYPAL_ORDER_ID PERSISTED_REQUEST_ID
+pnpm gate0 -- patch PAYPAL_ORDER_ID path/to/patch.json
 ```
 
-The Gate 0 runner targets PayPal Sandbox only. It creates orders, returns the approval URL, reads order state, and captures after approval. Use the locally supplied `buildpack/spec/GATE0_PAYPAL_TEST_PLAN.md` to record characterization results. Do not save or publish unsanitized PayPal responses, payer data, or credentials.
+The Gate 0 runner targets PayPal Sandbox only. It creates orders, returns the approval URL, reads order state, captures after approval, and applies JSON Patch operations for characterization. Review patch files carefully; they can mutate sandbox orders. Use the locally supplied `buildpack/spec/GATE0_PAYPAL_TEST_PLAN.md` to record characterization results. Do not save or publish unsanitized PayPal responses, payer data, or credentials.
 
 ## Project material
 
