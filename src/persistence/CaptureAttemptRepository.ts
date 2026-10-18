@@ -1,5 +1,6 @@
 import type { CaptureAttemptV1 } from "../domain/types.js";
 import { parseCaptureAttemptV1 } from "../api/CheckoutRecordValidation.js";
+import { nextCaptureState, type CaptureEvent } from "../execution/CaptureStateMachine.js";
 
 interface QueryResult {
   rows: Record<string, unknown>[];
@@ -16,6 +17,14 @@ export interface SqlPool {
 }
 
 const activeStates = "'IN_FLIGHT', 'EXECUTION_UNKNOWN', 'CAPTURE_PENDING', 'CAPTURE_COMPLETED_PENDING_WEBHOOK'";
+const captureStatusByEvent: Partial<Record<CaptureEvent, NonNullable<CaptureAttemptV1["paypalCaptureStatus"]>>> = {
+  PAYPAL_COMPLETED: "COMPLETED",
+  PAYPAL_PENDING: "PENDING",
+  PAYPAL_DECLINED: "DECLINED",
+  PAYPAL_FAILED: "FAILED",
+  RECONCILED_COMPLETED: "COMPLETED",
+  WEBHOOK_VERIFIED: "COMPLETED"
+};
 
 export async function startCaptureAttempt(
   pool: SqlPool,
@@ -75,6 +84,65 @@ export async function startCaptureAttempt(
     await client.query("COMMIT");
     inTransaction = false;
     return validated;
+  } catch (error) {
+    if (inTransaction) {
+      try { await client.query("ROLLBACK"); } catch { /* Keep the original transaction failure. */ }
+    }
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+export async function transitionCaptureAttempt(
+  pool: SqlPool,
+  attemptId: string,
+  event: CaptureEvent,
+  now: string,
+  captureId?: string
+): Promise<CaptureAttemptV1> {
+  if (!attemptId.trim() || !Number.isFinite(Date.parse(now)) || (captureId !== undefined && !captureId.trim())) {
+    throw new Error("INVALID_CAPTURE_ATTEMPT_UPDATE");
+  }
+  const client = await pool.connect();
+  let inTransaction = false;
+  try {
+    await client.query("BEGIN");
+    inTransaction = true;
+    const selected = await client.query(
+      `SELECT 'capture-attempt-v1' AS "schemaVersion", attempt_id AS "attemptId", admission_id AS "admissionId",
+              paypal_order_id AS "paypalOrderId", material_hash AS "materialHash", paypal_request_id AS "paypalRequestId",
+              state, paypal_capture_id AS "paypalCaptureId", paypal_capture_status AS "paypalCaptureStatus",
+              created_at::text AS "createdAt", updated_at::text AS "updatedAt"
+       FROM capture_attempts WHERE attempt_id = $1 FOR UPDATE`,
+      [attemptId]
+    );
+    if (!selected.rows[0]) throw new Error("CAPTURE_ATTEMPT_NOT_FOUND");
+    const current = parseCaptureAttemptV1(selected.rows[0]);
+    if (Date.parse(now) < Date.parse(current.updatedAt)) throw new Error("INVALID_CAPTURE_ATTEMPT_UPDATE");
+    const state = nextCaptureState(current.state, event);
+    const updated = await client.query(
+      `UPDATE capture_attempts SET state = $2, paypal_capture_id = COALESCE($3, paypal_capture_id),
+          paypal_capture_status = COALESCE($4, paypal_capture_status), updated_at = $5
+       WHERE attempt_id = $1
+       RETURNING 'capture-attempt-v1' AS "schemaVersion", attempt_id AS "attemptId", admission_id AS "admissionId",
+          paypal_order_id AS "paypalOrderId", material_hash AS "materialHash", paypal_request_id AS "paypalRequestId",
+          state, paypal_capture_id AS "paypalCaptureId", paypal_capture_status AS "paypalCaptureStatus",
+          created_at::text AS "createdAt", updated_at::text AS "updatedAt"`,
+      [attemptId, state, captureId ?? null, captureStatusByEvent[event] ?? null, now]
+    );
+    if (!updated.rows[0]) throw new Error("CAPTURE_ATTEMPT_NOT_FOUND");
+    const result = parseCaptureAttemptV1(updated.rows[0]);
+    if (state === "CLOSED_VERIFIED_WEBHOOK" || state === "CLOSED_RECONCILED") {
+      const closed = await client.query(
+        `UPDATE admissions SET state = 'CLOSED' WHERE admission_id = $1 AND state = 'CAPTURE_STARTED'`,
+        [current.admissionId]
+      );
+      if (closed.rowCount !== 1) throw new Error("ADMISSION_CLOSE_FAILED");
+    }
+    await client.query("COMMIT");
+    inTransaction = false;
+    return result;
   } catch (error) {
     if (inTransaction) {
       try { await client.query("ROLLBACK"); } catch { /* Keep the original transaction failure. */ }
