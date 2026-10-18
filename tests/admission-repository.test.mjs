@@ -27,11 +27,17 @@ const admission = {
 };
 
 test("stores an ALLOW admission in CREATING_ORDER before any PayPal order is attached", async () => {
-  const { pool, calls } = fakePool([{ rows: [] }]);
+  const { pool, calls } = fakePool([{ rows: [{ claimSetHash: admission.claimSetHash }] }, { rows: [] }]);
   await createAdmission(pool, admission);
-  assert.match(calls[0].sql, /INSERT INTO admissions/);
-  assert.match(calls[0].sql, /NULL, 'CREATING_ORDER'/);
-  assert.equal(calls[0].values[13], admission.createdAt);
+  assert.match(calls[1].sql, /INSERT INTO admissions/);
+  assert.match(calls[1].sql, /NULL, 'CREATING_ORDER'/);
+  assert.equal(calls[1].values[13], admission.createdAt);
+});
+
+test("refuses an admission whose Claim Set hash differs from persisted content", async () => {
+  const { pool, calls } = fakePool([{ rows: [{ claimSetHash: "sha256:other" }] }]);
+  await assert.rejects(createAdmission(pool, admission), { message: "CLAIM_SET_INTEGRITY_FAILURE" });
+  assert.equal(calls.some((call) => call.sql.startsWith("INSERT INTO admissions")), false);
 });
 
 test("attaches the order only while Binding A admission is live and pending", async () => {

@@ -19,6 +19,11 @@ export async function createAdmission(pool: SqlPool, input: AdmissionCreation): 
 
   const client = await pool.connect();
   try {
+    const claimSet = await client.query(
+      `SELECT claim_set_hash AS "claimSetHash" FROM claim_sets WHERE claim_set_id = $1`,
+      [claimSetId]
+    );
+    if (claimSet.rows[0]?.claimSetHash !== record.claimSetHash) throw new Error("CLAIM_SET_INTEGRITY_FAILURE");
     await client.query(
       `INSERT INTO admissions
          (admission_id, claim_set_id, subject_ref, subject_hash, resolved_cart_snapshot_hash,

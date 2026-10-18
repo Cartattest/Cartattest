@@ -61,6 +61,7 @@ test("does not persist or call PayPal for STEP_UP or BLOCK", async () => {
 function fakePool(calls) {
   return { pool: { async connect() { return {
     async query(sql) {
+      if (sql.startsWith("SELECT claim_set_hash")) return { rows: [{ claimSetHash: "sha256:claims" }] };
       if (sql.startsWith("INSERT INTO admissions")) calls.push("insert");
       else if (sql.startsWith("UPDATE admissions SET paypal_order_id")) { calls.push("attach"); return { rows: [{ admissionId: "admission-1" }] }; }
       else if (sql.startsWith("UPDATE admissions SET state = 'ABORTED'")) calls.push("abort");
