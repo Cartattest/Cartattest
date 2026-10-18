@@ -3,7 +3,7 @@ import { hashCartBinding } from "../binding/CartBindingV1.js";
 import type { CaptureAttemptV1 } from "../domain/types.js";
 import { checkApprovedOrderBinding } from "../execution/BindingChecks.js";
 import type { PayPalGateway } from "../ports/PayPalGateway.js";
-import { loadAwaitingAdmission } from "../persistence/AdmissionRepository.js";
+import { abortAwaitingAdmission, loadAwaitingAdmission } from "../persistence/AdmissionRepository.js";
 import { startCaptureAttempt, transitionCaptureAttempt } from "../persistence/CaptureAttemptRepository.js";
 import type { SqlPool } from "../persistence/CaptureAttemptRepository.js";
 
@@ -19,13 +19,20 @@ export async function completeCheckout(input: unknown, dependencies: CompleteChe
   const now = dependencies.now?.() ?? new Date();
   if (!Number.isFinite(now.getTime())) throw new Error("INVALID_POLICY_TIME");
   const admission = await loadAwaitingAdmission(dependencies.pool, admissionId, now.toISOString());
-  await checkApprovedOrderBinding(
-    dependencies.gateway,
-    admission.record.paypalOrderId,
-    admission.admittedCartBinding,
-    admission.record.expiresAt,
-    now.getTime()
-  );
+  try {
+    await checkApprovedOrderBinding(
+      dependencies.gateway,
+      admission.record.paypalOrderId,
+      admission.admittedCartBinding,
+      admission.record.expiresAt,
+      now.getTime()
+    );
+  } catch (error) {
+    if (error instanceof Error && ["CART_BINDING_MISMATCH", "PAYPAL_ORDER_ID_MISMATCH"].includes(error.message)) {
+      try { await abortAwaitingAdmission(dependencies.pool, admissionId); } catch { /* Preserve the Binding B failure. */ }
+    }
+    throw error;
+  }
 
   const createdAt = dependencies.now?.() ?? new Date();
   if (!Number.isFinite(createdAt.getTime())) throw new Error("INVALID_POLICY_TIME");

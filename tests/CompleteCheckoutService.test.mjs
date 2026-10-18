@@ -36,6 +36,8 @@ test("does not claim or capture when the approved order binding changed", async 
     pool: fakePool(calls, { admissionRow }), gateway: drift, newId: () => "unused", now: () => new Date(now)
   }), { message: "CART_BINDING_MISMATCH" });
   assert.deepEqual(calls.filter((call) => typeof call === "string"), ["paypal-get"]);
+  assert.ok(calls.some((call) => typeof call === "object" && call.sql.startsWith("UPDATE admissions SET state = 'ABORTED'")));
+  assert.equal(calls.some((call) => typeof call === "object" && call.sql.startsWith("INSERT INTO capture_attempts")), false);
 });
 
 test("records an ambiguous result after the capture request fails", async () => {

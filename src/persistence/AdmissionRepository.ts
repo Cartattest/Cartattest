@@ -72,6 +72,19 @@ export async function abortAdmission(pool: SqlPool, admissionId: string): Promis
   }
 }
 
+export async function abortAwaitingAdmission(pool: SqlPool, admissionId: string): Promise<void> {
+  if (typeof admissionId !== "string" || !admissionId.trim()) throw new Error("INVALID_ADMISSION_ID");
+  const client = await pool.connect();
+  try {
+    await client.query(
+      `UPDATE admissions SET state = 'ABORTED' WHERE admission_id = $1 AND state = 'AWAITING_APPROVAL'`,
+      [admissionId]
+    );
+  } finally {
+    client.release();
+  }
+}
+
 export async function loadCheckoutStatus(
   pool: SqlPool,
   admissionId: string
