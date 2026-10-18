@@ -1,0 +1,7 @@
+buildpack/
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+SESSION_CHECKPOINT.md
