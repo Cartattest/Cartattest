@@ -89,6 +89,47 @@ test("rejects malformed OAuth token responses before making an API request", asy
   assert.equal(calls, 1);
 });
 
+test("reuses a cached OAuth token for subsequent API calls", async () => {
+  let tokenCalls = 0;
+  let orderCalls = 0;
+  const gateway = new OrdersV2Gateway({
+    clientId: "sandbox-client",
+    clientSecret: "sandbox-secret",
+    environment: "sandbox",
+    fetch: async (url) => {
+      if (String(url).endsWith("/v1/oauth2/token")) {
+        tokenCalls++;
+        return json({ access_token: "sandbox-token", expires_in: 3600 });
+      }
+      orderCalls++;
+      return json({ id: "SANDBOX-ORDER-1", status: "CREATED" });
+    }
+  });
+
+  await gateway.getOrder("SANDBOX-ORDER-1");
+  await gateway.getOrder("SANDBOX-ORDER-1");
+
+  assert.equal(tokenCalls, 1);
+  assert.equal(orderCalls, 2);
+});
+
+test("reports PayPal API failures without including unrelated response fields", async () => {
+  const gateway = new OrdersV2Gateway({
+    clientId: "sandbox-client",
+    clientSecret: "sandbox-secret",
+    environment: "sandbox",
+    fetch: async (url) => String(url).endsWith("/v1/oauth2/token")
+      ? json({ access_token: "sandbox-token", expires_in: 3600 })
+      : json({ name: "RESOURCE_NOT_FOUND", debug_id: "private-debug-id" }, 404)
+  });
+
+  await assert.rejects(gateway.getOrder("SANDBOX-ORDER-1"), (error) => {
+    assert.match(error.message, /PAYPAL_API_FAILED 404 RESOURCE_NOT_FOUND/);
+    assert.doesNotMatch(error.message, /private-debug-id/);
+    return true;
+  });
+});
+
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
