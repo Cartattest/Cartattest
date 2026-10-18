@@ -18,6 +18,7 @@ export interface SemanticAttestor {
    * Invalid/schema-violating model output fails closed as UNPROVEN after transport policy is exhausted.
    */
   attest(args: {
+    claimSetHash: `sha256:${string}`;
     claim: CommerceClaim;
     subjectHash: `sha256:${string}`;
     manifest: EvidenceManifestV1;
