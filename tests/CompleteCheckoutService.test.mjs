@@ -47,8 +47,33 @@ test("records an ambiguous result after the capture request fails", async () => 
   assert.ok(calls.some((call) => typeof call === "object" && call.values?.[1] === "EXECUTION_UNKNOWN"));
 });
 
-function fakePool(calls, { admissionRow }) {
-  let attempt;
+test("reconciles a completed unknown capture from PayPal before another capture", async () => {
+  const calls = [];
+  const unknown = captureAttempt("EXECUTION_UNKNOWN");
+  const result = await completeCheckout({ admissionId: "admission-1" }, {
+    pool: fakePool(calls, { admissionRow, existingAttempt: unknown }),
+    gateway: gateway(calls, { reconcileRaw: paypalOrder("COMPLETED", [{ id: "CAPTURE-1", status: "COMPLETED" }]) }),
+    newId: () => "must-not-be-used", now: () => new Date(now)
+  });
+  assert.equal(result.state, "CLOSED_RECONCILED");
+  assert.equal(result.paypalCaptureId, "CAPTURE-1");
+  assert.equal(calls.filter((call) => call === "paypal-capture").length, 0);
+});
+
+test("retries only after GET confirms an unknown order is still approved, reusing its request ID", async () => {
+  const calls = [];
+  const unknown = captureAttempt("EXECUTION_UNKNOWN");
+  await completeCheckout({ admissionId: "admission-1" }, {
+    pool: fakePool(calls, { admissionRow, existingAttempt: unknown }),
+    gateway: gateway(calls),
+    newId: () => "must-not-be-used", now: () => new Date(now)
+  });
+  assert.deepEqual(calls.filter((call) => typeof call === "string"), ["paypal-get", "paypal-get", "paypal-capture"]);
+  assert.ok(calls.some((call) => Array.isArray(call) && call[0] === "capture-request-id" && call[1] === unknown.paypalRequestId));
+});
+
+function fakePool(calls, { admissionRow, existingAttempt }) {
+  let attempt = existingAttempt;
   return { async connect() { return {
     async query(sql, values = []) {
       const call = { sql, values }; calls.push(call);
@@ -69,17 +94,25 @@ function fakePool(calls, { admissionRow }) {
   }; } };
 }
 
-function gateway(calls, { drift = false, failCapture = false } = {}) {
+function gateway(calls, { drift = false, failCapture = false, reconcileRaw, captureRequestIds } = {}) {
   const raw = paypalOrder();
   if (drift) raw.purchase_units[0].items[0].sku = "OTHER";
+  let gets = 0;
   return {
-    async getOrder() { calls.push("paypal-get"); return { orderId: "ORDER-1", orderStatus: "APPROVED", raw }; },
-    async captureOrder() { calls.push("paypal-capture"); if (failCapture) throw new Error("network timeout");
+    async getOrder() { calls.push("paypal-get"); gets++; return { orderId: "ORDER-1", orderStatus: gets > 1 && reconcileRaw ? "COMPLETED" : "APPROVED", raw: gets > 1 && reconcileRaw ? reconcileRaw : raw }; },
+    async captureOrder(orderId, requestId) { calls.push("paypal-capture", ["capture-request-id", requestId]); captureRequestIds?.push(requestId); if (failCapture) throw new Error("network timeout");
       return { httpStatus: 201, orderId: "ORDER-1", captureId: "CAPTURE-1", captureStatus: "COMPLETED", raw: {} }; }
   };
 }
 
-function paypalOrder() {
+function captureAttempt(state) {
+  return { schemaVersion: "capture-attempt-v1", attemptId: "attempt-1", admissionId: "admission-1", paypalOrderId: "ORDER-1",
+    materialHash: bindingHash, paypalRequestId: "persisted-request-id", state,
+    ...(state === "CAPTURE_PENDING" ? { paypalCaptureStatus: "PENDING" } : {}),
+    createdAt: "2026-10-18T12:01:00.000Z", updatedAt: "2026-10-18T12:01:00.000Z" };
+}
+
+function paypalOrder(status = "APPROVED", captures = []) {
   const money = (value) => ({ currency_code: binding.currency, value });
   return { intent: binding.intent,
     payment_source: { paypal: { experience_context: { shipping_preference: binding.shipping.preference } } },
@@ -93,6 +126,7 @@ function paypalOrder() {
         admin_area_2: binding.shipping.address.adminArea2, postal_code: binding.shipping.address.postalCode,
         country_code: binding.shipping.address.countryCode }, options: [{ id: binding.shipping.optionId, type: binding.shipping.type,
         amount: money(binding.shipping.amount), selected: true }] },
+      payments: { captures },
       items: binding.items.map((item) => ({ name: item.name, sku: item.sku, quantity: item.quantity,
         unit_amount: money(item.unitAmount), tax: money(item.tax) })) }], status: "APPROVED" };
 }
