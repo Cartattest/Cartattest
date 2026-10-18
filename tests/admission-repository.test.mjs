@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { attachPaypalOrderAfterBindingA, createAdmission, loadAwaitingAdmission } from "../dist/persistence/AdmissionRepository.js";
+import { abortAdmission, attachPaypalOrderAfterBindingA, createAdmission, loadAwaitingAdmission } from "../dist/persistence/AdmissionRepository.js";
 import { hashCartBinding } from "../dist/binding/CartBindingV1.js";
 
 const binding = { schemaVersion: "cart-binding-v1", intent: "CAPTURE", purchaseUnitCount: 1 };
@@ -58,6 +58,13 @@ test("loads an unexpired admission with its server-side order and binding", asyn
 test("rejects missing, expired or non-pending admissions", async () => {
   const { pool } = fakePool([{ rows: [] }]);
   await assert.rejects(loadAwaitingAdmission(pool, "admission-1", "2026-10-18T12:16:00.000Z"), { message: "ADMISSION_NOT_CAPTUREABLE" });
+});
+
+test("aborts an admission that cannot complete order creation", async () => {
+  const { pool, calls } = fakePool([{ rows: [{ admissionId: "admission-1" }] }]);
+  await abortAdmission(pool, "admission-1");
+  assert.match(calls[0].sql, /SET state = 'ABORTED'/);
+  assert.match(calls[0].sql, /state = 'CREATING_ORDER'/);
 });
 
 function fakePool(results) {

@@ -59,6 +59,19 @@ export async function attachPaypalOrderAfterBindingA(
   }
 }
 
+export async function abortAdmission(pool: SqlPool, admissionId: string): Promise<void> {
+  if (typeof admissionId !== "string" || !admissionId.trim()) throw new Error("INVALID_ADMISSION_ID");
+  const client = await pool.connect();
+  try {
+    await client.query(
+      `UPDATE admissions SET state = 'ABORTED' WHERE admission_id = $1 AND state = 'CREATING_ORDER'`,
+      [admissionId]
+    );
+  } finally {
+    client.release();
+  }
+}
+
 export async function loadAwaitingAdmission(
   pool: SqlPool,
   admissionId: string,
@@ -71,16 +84,16 @@ export async function loadAwaitingAdmission(
   try {
     const result = await client.query(
       `SELECT 'admission-record-v1' AS "schemaVersion", admission_id AS "admissionId",
-              claim_set_hash AS "claimSetHash", subject_hash AS "subjectHash",
-              resolved_cart_snapshot_hash AS "resolvedCartSnapshotHash",
-              evidence_manifest_version AS "evidenceManifestVersion", evidence_set_hashes AS "evidenceSetHashes",
-              attestation_hashes AS "attestationHashes", override_hashes AS "overrideHashes",
-              policy_version AS "policyVersion", cart_binding_profile AS "cartBindingProfile",
-              admitted_cart_binding_hash AS "admittedCartBindingHash", paypal_order_id AS "paypalOrderId",
-              'ALLOW' AS outcome, created_at::text AS "createdAt", expires_at::text AS "expiresAt",
-              subject_ref AS "subjectRef", admitted_cart_binding AS "admittedCartBinding"
-       FROM admissions
-       WHERE admission_id = $1 AND state = 'AWAITING_APPROVAL' AND expires_at > $2`,
+              cs.claim_set_hash AS "claimSetHash", a.subject_hash AS "subjectHash",
+              a.resolved_cart_snapshot_hash AS "resolvedCartSnapshotHash",
+              a.evidence_manifest_version AS "evidenceManifestVersion", a.evidence_set_hashes AS "evidenceSetHashes",
+              a.attestation_hashes AS "attestationHashes", a.override_hashes AS "overrideHashes",
+              a.policy_version AS "policyVersion", a.cart_binding_profile AS "cartBindingProfile",
+              a.admitted_cart_binding_hash AS "admittedCartBindingHash", a.paypal_order_id AS "paypalOrderId",
+              'ALLOW' AS outcome, a.created_at::text AS "createdAt", a.expires_at::text AS "expiresAt",
+              a.subject_ref AS "subjectRef", a.admitted_cart_binding AS "admittedCartBinding"
+       FROM admissions a JOIN claim_sets cs ON cs.claim_set_id = a.claim_set_id
+       WHERE a.admission_id = $1 AND a.state = 'AWAITING_APPROVAL' AND a.expires_at > $2`,
       [admissionId, now]
     );
     const row = result.rows[0];

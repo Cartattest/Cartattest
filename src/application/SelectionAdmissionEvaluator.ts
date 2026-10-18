@@ -37,6 +37,12 @@ export type SelectionAdmissionResult =
       claimSet: ClaimSetV1;
       claimSetHash: Sha256;
       resolvedSelection: ResolvedSelection;
+      admissionEvidence: {
+        evidenceManifestVersion: string;
+        evidenceSetHashes: Sha256[];
+        attestationHashes: Sha256[];
+        overrideHashes: Sha256[];
+      };
     };
 
 interface SemanticClaimEvidence {
@@ -157,5 +163,18 @@ export async function evaluateSelectionAdmission(
   }
 
   const options: AdmissionPolicyOptions = { now: nowIso, ...(dependencies.verifyOverride ? { verifyOverride: dependencies.verifyOverride } : {}) };
-  return { outcome: evaluateAdmission(evaluations, options), claimSet, claimSetHash: loaded.claimSetHash, resolvedSelection: resolved };
+  const profiles = [...new Set([...semanticEvidence.values()].map((value) => value.manifest.evidenceProfileId))];
+  if (profiles.length > 1) return { outcome: { status: "BLOCK", reason: "MULTIPLE_EVIDENCE_PROFILES_UNSUPPORTED" } };
+  return {
+    outcome: evaluateAdmission(evaluations, options),
+    claimSet,
+    claimSetHash: loaded.claimSetHash,
+    resolvedSelection: resolved,
+    admissionEvidence: {
+      evidenceManifestVersion: profiles[0] ?? "none",
+      evidenceSetHashes: [...new Set([...semanticEvidence.values()].map((value) => value.evidenceSetHash))].sort(),
+      attestationHashes: [...new Set([...semanticEvidence.values()].flatMap((value) => value.attestationHash ? [value.attestationHash] : []))].sort(),
+      overrideHashes: []
+    }
+  };
 }
