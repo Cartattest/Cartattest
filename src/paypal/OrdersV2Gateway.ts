@@ -126,7 +126,8 @@ export class OrdersV2Gateway implements PayPalGateway {
         body: "grant_type=client_credentials"
       });
       const body = await response.json() as Partial<OAuthToken>;
-      if (!response.ok || !body.access_token || !body.expires_in) {
+      if (!response.ok || typeof body.access_token !== "string" || !body.access_token.trim() ||
+          typeof body.expires_in !== "number" || !Number.isFinite(body.expires_in) || body.expires_in <= 0) {
         throw new Error(`PAYPAL_OAUTH_FAILED ${response.status} ${safeError(body)}`);
       }
       this.token = { value: body.access_token, expiresAt: Date.now() + body.expires_in * 1000 };

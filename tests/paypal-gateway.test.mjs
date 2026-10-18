@@ -73,6 +73,22 @@ test("captures with the persisted request ID and returns PayPal HTTP and capture
   assert.equal(calls[1].url, "https://api-m.sandbox.paypal.com/v2/checkout/orders/SANDBOX-ORDER-1/capture");
 });
 
+test("rejects malformed OAuth token responses before making an API request", async () => {
+  let calls = 0;
+  const gateway = new OrdersV2Gateway({
+    clientId: "sandbox-client",
+    clientSecret: "sandbox-secret",
+    environment: "sandbox",
+    fetch: async () => {
+      calls++;
+      return json({ access_token: {}, expires_in: "3600" });
+    }
+  });
+
+  await assert.rejects(gateway.getOrder("SANDBOX-ORDER-1"), /PAYPAL_OAUTH_FAILED 200/);
+  assert.equal(calls, 1);
+});
+
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 }
