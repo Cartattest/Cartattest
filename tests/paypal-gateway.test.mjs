@@ -73,6 +73,47 @@ test("captures with the persisted request ID and returns PayPal HTTP and capture
   assert.equal(calls[1].url, "https://api-m.sandbox.paypal.com/v2/checkout/orders/SANDBOX-ORDER-1/capture");
 });
 
+test("verifies a webhook with PayPal before returning the provider verdict", async () => {
+  const calls = [];
+  const event = { id: "WH-1", event_type: "PAYMENT.CAPTURE.COMPLETED" };
+  const gateway = new OrdersV2Gateway({
+    clientId: "sandbox-client", clientSecret: "sandbox-secret", environment: "sandbox",
+    fetch: async (url, init) => {
+      calls.push({ url: String(url), init });
+      return String(url).endsWith("/v1/oauth2/token")
+        ? json({ access_token: "sandbox-token", expires_in: 3600 })
+        : json({ verification_status: "SUCCESS" });
+    }
+  });
+  const headers = webhookHeaders();
+  assert.equal(await gateway.verifyWebhookSignature("SANDBOX-WEBHOOK", headers, event), true);
+  assert.equal(calls[1].url, "https://api-m.sandbox.paypal.com/v1/notifications/verify-webhook-signature");
+  assert.deepEqual(JSON.parse(calls[1].init.body), {
+    auth_algo: headers["paypal-auth-algo"], cert_url: headers["paypal-cert-url"],
+    transmission_id: headers["paypal-transmission-id"], transmission_sig: headers["paypal-transmission-sig"],
+    transmission_time: headers["paypal-transmission-time"], webhook_id: "SANDBOX-WEBHOOK", webhook_event: event
+  });
+});
+
+test("rejects incomplete or non-PayPal certificate URLs before verification requests", async () => {
+  let requests = 0;
+  const gateway = new OrdersV2Gateway({ clientId: "client", clientSecret: "secret", environment: "sandbox",
+    fetch: async () => { requests++; return json({ access_token: "token", expires_in: 3600 }); } });
+  await assert.rejects(gateway.verifyWebhookSignature("id", { ...webhookHeaders(), "paypal-cert-url": "https://attacker.example/cert" }, {}),
+    { message: "PAYPAL_WEBHOOK_HEADERS_INVALID" });
+  assert.equal(requests, 0);
+  await assert.rejects(gateway.verifyWebhookSignature("id", { "paypal-transmission-id": "only-one" }, {}),
+    { message: "PAYPAL_WEBHOOK_HEADERS_INVALID" });
+  assert.equal(requests, 0);
+});
+
+test("returns false when PayPal rejects webhook authenticity", async () => {
+  const gateway = new OrdersV2Gateway({ clientId: "client", clientSecret: "secret", environment: "sandbox",
+    fetch: async (url) => String(url).endsWith("/v1/oauth2/token")
+      ? json({ access_token: "token", expires_in: 3600 }) : json({ verification_status: "FAILURE" }) });
+  assert.equal(await gateway.verifyWebhookSignature("id", webhookHeaders(), { id: "WH-1" }), false);
+});
+
 test("rejects malformed OAuth token responses before making an API request", async () => {
   let calls = 0;
   const gateway = new OrdersV2Gateway({
@@ -132,4 +173,14 @@ test("reports PayPal API failures without including unrelated response fields", 
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+}
+
+function webhookHeaders() {
+  return {
+    "paypal-auth-algo": "SHA256withRSA",
+    "paypal-cert-url": "https://api-m.sandbox.paypal.com/v1/notifications/certs/CERT-1",
+    "paypal-transmission-id": "TRANSMISSION-1",
+    "paypal-transmission-sig": "signature",
+    "paypal-transmission-time": "2026-10-18T12:00:00Z"
+  };
 }

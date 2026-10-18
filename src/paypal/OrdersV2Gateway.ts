@@ -8,6 +8,14 @@ export interface PayPalGatewayConfig {
   fetch?: typeof fetch;
 }
 
+export interface PayPalWebhookHeaders {
+  "paypal-auth-algo"?: string;
+  "paypal-cert-url"?: string;
+  "paypal-transmission-id"?: string;
+  "paypal-transmission-sig"?: string;
+  "paypal-transmission-time"?: string;
+}
+
 type OAuthToken = { access_token: string; expires_in: number };
 type PayPalOrderResponse = {
   id?: string;
@@ -115,6 +123,38 @@ export class OrdersV2Gateway implements PayPalGateway {
     };
   }
 
+  async verifyWebhookSignature(webhookId: string, headers: PayPalWebhookHeaders, webhookEvent: unknown): Promise<boolean> {
+    const { "paypal-auth-algo": authAlgo, "paypal-cert-url": certUrl,
+      "paypal-transmission-id": transmissionId, "paypal-transmission-sig": transmissionSig,
+      "paypal-transmission-time": transmissionTime } = headers;
+    if (!nonempty(webhookId) || !nonempty(authAlgo) || !nonempty(certUrl) || !nonempty(transmissionId) ||
+        !nonempty(transmissionSig) || !nonempty(transmissionTime)) {
+      throw new Error("PAYPAL_WEBHOOK_HEADERS_INVALID");
+    }
+    let certificate: URL;
+    try { certificate = new URL(certUrl); } catch { throw new Error("PAYPAL_WEBHOOK_HEADERS_INVALID"); }
+    const paypalHosts = this.config.environment === "sandbox"
+      ? ["api.sandbox.paypal.com", "api-m.sandbox.paypal.com"]
+      : ["api.paypal.com", "api-m.paypal.com"];
+    if (certificate.protocol !== "https:" || !paypalHosts.includes(certificate.hostname) || certificate.port ||
+        certificate.username || certificate.password || !certificate.pathname.startsWith("/v1/notifications/certs/")) {
+      throw new Error("PAYPAL_WEBHOOK_HEADERS_INVALID");
+    }
+    const result = await this.api<{ verification_status?: string }>("/v1/notifications/verify-webhook-signature", {
+      method: "POST",
+      body: JSON.stringify({
+        auth_algo: authAlgo,
+        cert_url: certUrl,
+        transmission_id: transmissionId,
+        transmission_sig: transmissionSig,
+        transmission_time: transmissionTime,
+        webhook_id: webhookId,
+        webhook_event: webhookEvent
+      })
+    });
+    return result.verification_status === "SUCCESS";
+  }
+
   private async accessToken(): Promise<string> {
     if (this.token && this.token.expiresAt > Date.now() + 30_000) return this.token.value;
     if (this.tokenRequest) return this.tokenRequest;
@@ -194,4 +234,8 @@ function safeError(value: unknown): string {
   if (!value || typeof value !== "object") return "unknown response";
   const body = value as Record<string, unknown>;
   return String(body.name ?? body.error ?? body.message ?? "unknown response").slice(0, 160);
+}
+
+function nonempty(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
 }
