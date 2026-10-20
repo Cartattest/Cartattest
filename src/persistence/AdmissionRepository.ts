@@ -7,13 +7,16 @@ export type AdmissionCreation = Omit<AdmissionRecordV1, "paypalOrderId"> & {
   claimSetId: string;
   subjectRef: string;
   admittedCartBinding: CartBindingV1;
+  evidenceSnapshot: unknown;
 };
 
 export async function createAdmission(pool: SqlPool, input: AdmissionCreation): Promise<void> {
-  const { claimSetId, subjectRef, admittedCartBinding, ...record } = input;
+  const { claimSetId, subjectRef, admittedCartBinding, evidenceSnapshot, ...record } = input;
   parseAdmissionRecordV1({ ...record, paypalOrderId: "pending-order" });
   if (typeof claimSetId !== "string" || !claimSetId.trim() || typeof subjectRef !== "string" || !subjectRef.trim() ||
-      !isRecord(admittedCartBinding) || await hashCartBinding(admittedCartBinding as unknown as CartBindingV1) !== record.admittedCartBindingHash) {
+      !isRecord(admittedCartBinding) || await hashCartBinding(admittedCartBinding as unknown as CartBindingV1) !== record.admittedCartBindingHash ||
+      !isRecord(evidenceSnapshot) || evidenceSnapshot.schemaVersion !== "checkout-evidence-snapshot-v1" ||
+      !isRecord(evidenceSnapshot.claimSet) || !isRecord(evidenceSnapshot.resolvedSelection) || !Array.isArray(evidenceSnapshot.claimEvaluations)) {
     throw new Error("INVALID_ADMISSION_RECORD");
   }
 
@@ -29,12 +32,12 @@ export async function createAdmission(pool: SqlPool, input: AdmissionCreation): 
          (admission_id, claim_set_id, subject_ref, subject_hash, resolved_cart_snapshot_hash,
           evidence_manifest_version, evidence_set_hashes, attestation_hashes, override_hashes,
           policy_version, cart_binding_profile, admitted_cart_binding, admitted_cart_binding_hash,
-          paypal_order_id, state, created_at, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NULL, 'CREATING_ORDER', $14, $15)`,
+          paypal_order_id, state, created_at, expires_at, evidence_snapshot)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NULL, 'CREATING_ORDER', $14, $15, $16)`,
       [record.admissionId, claimSetId, subjectRef, record.subjectHash, record.resolvedCartSnapshotHash,
         record.evidenceManifestVersion, record.evidenceSetHashes, record.attestationHashes, record.overrideHashes,
         record.policyVersion, record.cartBindingProfile, admittedCartBinding, record.admittedCartBindingHash,
-        record.createdAt, record.expiresAt]
+        record.createdAt, record.expiresAt, evidenceSnapshot]
     );
   } finally {
     client.release();

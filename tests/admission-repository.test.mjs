@@ -21,6 +21,7 @@ const admission = {
   policyVersion: "policy-v1",
   cartBindingProfile: "v1",
   admittedCartBinding: binding,
+  evidenceSnapshot: { schemaVersion: "checkout-evidence-snapshot-v1", claimSet: {}, resolvedSelection: {}, claimEvaluations: [] },
   admittedCartBindingHash: bindingHash,
   outcome: "ALLOW",
   createdAt: "2026-10-18T12:00:00.000Z",
@@ -33,6 +34,7 @@ test("stores an ALLOW admission in CREATING_ORDER before any PayPal order is att
   assert.match(calls[1].sql, /INSERT INTO admissions/);
   assert.match(calls[1].sql, /NULL, 'CREATING_ORDER'/);
   assert.equal(calls[1].values[13], admission.createdAt);
+  assert.deepEqual(calls[1].values[15], admission.evidenceSnapshot);
 });
 
 test("refuses an admission whose Claim Set hash differs from persisted content", async () => {
@@ -49,7 +51,7 @@ test("attaches the order only while Binding A admission is live and pending", as
 });
 
 test("loads an unexpired admission with its server-side order and binding", async () => {
-  const { claimSetId, subjectRef, admittedCartBinding, ...record } = admission;
+  const { claimSetId, subjectRef, admittedCartBinding, evidenceSnapshot, ...record } = admission;
   const row = {
     ...record,
     paypalOrderId: "order-1",

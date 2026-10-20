@@ -42,7 +42,13 @@ export async function createOrderAfterAdmission(
     ...record,
     claimSetId: evaluation.claimSet.claimSetId,
     subjectRef: evaluation.resolvedSelection.subjectRef,
-    admittedCartBinding: evaluation.resolvedSelection.cartBinding
+    admittedCartBinding: evaluation.resolvedSelection.cartBinding,
+    evidenceSnapshot: {
+      schemaVersion: "checkout-evidence-snapshot-v1",
+      claimSet: evaluation.claimSet,
+      resolvedSelection: evaluation.resolvedSelection,
+      claimEvaluations: evaluation.claimEvaluations
+    }
   };
   await createAdmission(dependencies.pool, input);
 

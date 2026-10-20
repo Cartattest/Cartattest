@@ -10,6 +10,7 @@ const evaluation = {
   claimSet: { claimSetId: "claims-1" },
   claimSetHash: "sha256:claims",
   resolvedSelection: { subjectRef: "jacket-1", subjectHash: "sha256:subject", cartBinding: binding, cartSnapshotHash: "sha256:cart" },
+  claimEvaluations: [],
   admissionEvidence: { evidenceManifestVersion: "none", evidenceSetHashes: [], attestationHashes: [], overrideHashes: [] }
 };
 
