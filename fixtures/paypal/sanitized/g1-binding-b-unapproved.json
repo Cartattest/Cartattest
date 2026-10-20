@@ -1,0 +1,10 @@
+{
+  "observedAtUtc": "2026-10-20T18:02:00Z",
+  "test": "G1-Binding-B-before-approval",
+  "environment": "PayPal Sandbox",
+  "request": "GET /v2/checkout/orders/{orderId}",
+  "orderStatus": "PAYER_ACTION_REQUIRED",
+  "result": "PAYPAL_ORDER_NOT_APPROVED",
+  "captureDispatched": false,
+  "orderIdentifiers": "omitted"
+}
