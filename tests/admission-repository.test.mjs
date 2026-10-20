@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import * as admissionRepository from "../dist/persistence/AdmissionRepository.js";
 import { abortAdmission, abortAwaitingAdmission, attachPaypalOrderAfterBindingA, createAdmission, loadAwaitingAdmission, loadCheckoutStatus } from "../dist/persistence/AdmissionRepository.js";
 import { hashCartBinding } from "../dist/binding/CartBindingV1.js";
 
@@ -93,6 +94,17 @@ test("loads checkout status without exposing the PayPal order ID", async () => {
     capture: { state: "CAPTURE_PENDING", status: "PENDING" }
   });
   assert.doesNotMatch(calls[0].sql, /paypal_order_id/);
+});
+
+test("resolves the PayPal return token only to a persisted active admission", async () => {
+  assert.equal(typeof admissionRepository.findAdmissionByPaypalOrderId, "function");
+  const { pool, calls } = fakePool([{ rows: [{ admissionId: "admission-1", admissionState: "AWAITING_APPROVAL" }] }]);
+  assert.deepEqual(await admissionRepository.findAdmissionByPaypalOrderId(pool, "ORDER-1"), {
+    admissionId: "admission-1", admissionState: "AWAITING_APPROVAL"
+  });
+  assert.match(calls[0].sql, /paypal_order_id = \$1/);
+  assert.match(calls[0].sql, /state IN \('AWAITING_APPROVAL', 'CAPTURE_STARTED', 'CLOSED'\)/);
+  await assert.rejects(admissionRepository.findAdmissionByPaypalOrderId(pool, "invalid token"), { message: "INVALID_PAYPAL_ORDER_ID" });
 });
 
 function fakePool(results) {

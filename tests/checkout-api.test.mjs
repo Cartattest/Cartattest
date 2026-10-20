@@ -67,6 +67,26 @@ test("exposes read-only checkout state by admission ID without a PayPal order ID
   assert.equal("paypalOrderId" in body, false);
 });
 
+test("rejects malformed PayPal return tokens before loading an admission", async () => {
+  let connects = 0;
+  const deps = dependencies({ async connect() { connects++; throw new Error("must not connect"); } });
+  const response = await handleCheckoutApiRequest(new Request("https://service.example/checkout/return?token=bad%20token"), deps);
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), { error: "INVALID_PAYPAL_ORDER_ID" });
+  assert.equal(connects, 0);
+});
+
+test("does not accept an arbitrary PayPal return token without a stored admission", async () => {
+  const calls = [];
+  const response = await handleCheckoutApiRequest(
+    new Request("https://service.example/checkout/return?token=ORDER-UNKNOWN"),
+    dependencies(fakePool(calls, () => ({ rows: [] })))
+  );
+  assert.equal(response.status, 404);
+  assert.deepEqual(await response.json(), { error: "ADMISSION_NOT_FOUND" });
+  assert.deepEqual(calls[0].values, ["ORDER-UNKNOWN"]);
+});
+
 test("serves only the frozen buyer-facing context from an unconsumed STEP-UP session", async () => {
   const context = {
     schemaVersion: "step-up-context-v1", claimIds: ["waterproof"], expiresAt: "2026-10-18T12:10:00.000Z",

@@ -125,6 +125,32 @@ export async function loadCheckoutStatus(
   }
 }
 
+export async function findAdmissionByPaypalOrderId(
+  pool: SqlPool,
+  paypalOrderId: string
+): Promise<{ admissionId: string; admissionState: "AWAITING_APPROVAL" | "CAPTURE_STARTED" | "CLOSED" }> {
+  if (typeof paypalOrderId !== "string" || !/^[A-Z0-9-]{1,64}$/.test(paypalOrderId)) {
+    throw new Error("INVALID_PAYPAL_ORDER_ID");
+  }
+  const client = await pool.connect();
+  try {
+    const result = await client.query(
+      `SELECT admission_id AS "admissionId", state AS "admissionState" FROM admissions
+       WHERE paypal_order_id = $1 AND state IN ('AWAITING_APPROVAL', 'CAPTURE_STARTED', 'CLOSED')`,
+      [paypalOrderId]
+    );
+    const row = result.rows[0];
+    if (!row) throw new Error("ADMISSION_NOT_FOUND");
+    if (typeof row.admissionId !== "string" ||
+        !(["AWAITING_APPROVAL", "CAPTURE_STARTED", "CLOSED"] as unknown[]).includes(row.admissionState)) {
+      throw new Error("ADMISSION_INTEGRITY_FAILURE");
+    }
+    return { admissionId: row.admissionId, admissionState: row.admissionState as "AWAITING_APPROVAL" | "CAPTURE_STARTED" | "CLOSED" };
+  } finally {
+    client.release();
+  }
+}
+
 export async function loadAwaitingAdmission(
   pool: SqlPool,
   admissionId: string,

@@ -19,6 +19,7 @@ Keep secrets in `.env`; it is gitignored. Never paste credentials into source, c
 | `DATABASE_URL` | PostgreSQL connection string, for example `postgresql://USER:PASSWORD@HOST:PORT/DATABASE`. | Required for the SQL repositories and `pnpm migrate`. Schema, pool adapter, and migration command are implemented. A database service is not provisioned. |
 | `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET` | PayPal REST app credentials. | Sandbox credentials are required for Gate 0 characterization and live checkout. Keep PayPal in Sandbox. |
 | `PAYPAL_ENV` | `sandbox` or `live`. | Gate 0 is Sandbox only. Do not use live credentials for this prototype. |
+| `PAYPAL_RETURN_URL`, `PAYPAL_CANCEL_URL` | Absolute browser destinations for PayPal approval and cancellation. | Set both to the deployed CartAttest `/checkout/return` and `/checkout/cancel` endpoints before browser checkout. |
 | `PAYPAL_WEBHOOK_ID` | Webhook ID registered under the same PayPal app. | Signature verification and event processing exist, but there is no running server or public HTTPS callback to register yet. |
 | `ATTESTOR_PROVIDER`, `ATTESTOR_MODEL_ID`, `ATTESTOR_API_KEY` | Provider, exact model, and provider key for semantic claims. | No provider adapter is wired. Freeze evaluation inputs before selecting/tuning the model or creating a key. |
 | `CARTATTEST_SERVICE_SIGNING_KEY`, `CARTATTEST_SERVICE_KEY_ID` | Service key for signed evidence bundles and future overrides. | Bundle signing/verifying functions exist. Runtime key loading and override issuance are not wired. Do not put a PEM directly in `.env` until the runtime encoding is defined. |
@@ -56,4 +57,4 @@ The product/security owner must freeze and retain the private holdout before any
 
 ## Current implementation state
 
-The repository provides domain, policy, evidence, PayPal, persistence, capture reconciliation, webhook, and dependency-injected API modules. It does not yet include a runnable HTTP server, buyer UI, trusted STEP-UP decision/override flow, runtime composition for the attestor, or receipt/evaluation pages. Unit tests cover the service boundaries; they do not replace live PostgreSQL, PayPal Sandbox, or end-to-end characterization.
+The repository provides domain, policy, evidence, PayPal, persistence, capture reconciliation, webhook, and dependency-injected API modules. The API includes server-side PayPal return/cancel handlers, but there is not yet a runnable HTTP server, buyer UI, trusted STEP-UP decision/override flow, runtime composition for the attestor, or receipt/evaluation pages. Unit tests cover the service boundaries; they do not replace live PostgreSQL, PayPal Sandbox, or end-to-end characterization.

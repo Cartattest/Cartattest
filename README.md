@@ -9,6 +9,7 @@ CartAttest checks whether an AI shopping agent's product choice matches the buye
 - Evidence completeness, freshness, source authority and semantic-attestation validation with process-local memoization.
 - PayPal Orders v2 gateway, CartBinding checks before and after buyer approval, and a persisted checkout admission.
 - Atomic capture attempts, GET-first reconciliation after uncertain capture responses, and verified, idempotent PayPal webhook handling.
+- Server-side PayPal approval return and cancellation handlers that resolve order tokens through persisted admissions.
 - Signed evidence-bundle creation and verification against an externally pinned key.
 - Dependency-injected API handlers and a versioned PostgreSQL schema.
 
@@ -16,7 +17,7 @@ CartAttest checks whether an AI shopping agent's product choice matches the buye
 
 This is not yet a runnable web application. The repository does not include a server listener, buyer screens, a configured semantic-attestor provider, or a deployed database. STEP-UP outcomes currently identify the affected claim IDs; the trusted buyer decision flow is still to be built. The fixture merchant is for development only.
 
-PayPal Sandbox characterization and end-to-end checkout have not been run. See [HOW_TO.md](HOW_TO.md) for owner setup and outstanding external inputs. Do not treat unit tests as evidence of a live PayPal or PostgreSQL flow.
+Gate 0 is still in progress: a Sandbox order was approved and captured, but the material create-vs-approval projection and remaining mutation/webhook observations are incomplete. See [fixtures/paypal/gate0-summary.md](fixtures/paypal/gate0-summary.md) and [HOW_TO.md](HOW_TO.md). Unit tests do not replace live PostgreSQL or end-to-end checkout verification.
 
 ## Requirements
 

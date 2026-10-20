@@ -7,7 +7,7 @@ import type { PayPalGateway } from "../ports/PayPalGateway.js";
 import type { PayPalWebhookVerifier } from "../application/PayPalWebhookService.js";
 import type { SqlPool } from "../persistence/CaptureAttemptRepository.js";
 import { loadClaimSet, saveClaimSet } from "../persistence/ClaimSetRepository.js";
-import { loadCheckoutStatus } from "../persistence/AdmissionRepository.js";
+import { abortAwaitingAdmission, findAdmissionByPaypalOrderId, loadCheckoutStatus } from "../persistence/AdmissionRepository.js";
 import { consumeStepUpSession, loadStepUpSession, saveStepUpSession } from "../persistence/StepUpSessionRepository.js";
 import { parseBuyerOverrideV1 } from "./BuyerOverrideValidation.js";
 import { evaluateStepUpDecision, type StepUpContextV1 } from "../application/StepUpDecisionService.js";
@@ -24,7 +24,43 @@ export interface CheckoutApiDependencies {
 }
 
 export async function handleCheckoutApiRequest(request: Request, dependencies: CheckoutApiDependencies): Promise<Response> {
-  const path = new URL(request.url).pathname;
+  const url = new URL(request.url);
+  const path = url.pathname;
+  if (path === "/checkout/return" || path === "/checkout/cancel") {
+    if (request.method !== "GET") return json({ error: "METHOD_NOT_ALLOWED" }, 405, { Allow: "GET" });
+    const tokens = url.searchParams.getAll("token");
+    if (tokens.length !== 1 || !/^[A-Z0-9-]{1,64}$/.test(tokens[0]!)) {
+      return json({ error: "INVALID_PAYPAL_ORDER_ID" }, 400);
+    }
+    try {
+      const admission = await findAdmissionByPaypalOrderId(dependencies.pool, tokens[0]!);
+      if (path === "/checkout/cancel") {
+        if (admission.admissionState === "AWAITING_APPROVAL") {
+          await abortAwaitingAdmission(dependencies.pool, admission.admissionId);
+          return json({ status: "CANCELLED" }, 200);
+        }
+        return json(await loadCheckoutStatus(dependencies.pool, admission.admissionId), 200);
+      }
+      if (admission.admissionState === "CLOSED") {
+        return json(await loadCheckoutStatus(dependencies.pool, admission.admissionId), 200);
+      }
+      const attempt = await completeCheckout({ admissionId: admission.admissionId }, {
+        pool: dependencies.pool, gateway: dependencies.gateway, newId: dependencies.selection.newId,
+        ...(dependencies.selection.now ? { now: dependencies.selection.now } : {})
+      });
+      return json({ state: attempt.state,
+        ...(attempt.paypalCaptureId ? { captureId: attempt.paypalCaptureId } : {}),
+        ...(attempt.paypalCaptureStatus ? { captureStatus: attempt.paypalCaptureStatus } : {}) }, 200);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "CHECKOUT_FAILED";
+      if (message === "INVALID_PAYPAL_ORDER_ID") return json({ error: message }, 400);
+      if (message === "ADMISSION_NOT_FOUND") return json({ error: message }, 404);
+      if (["ADMISSION_NOT_CAPTUREABLE", "PAYPAL_ORDER_NOT_APPROVED", "CART_BINDING_MISMATCH"].includes(message)) {
+        return json({ error: message }, 409);
+      }
+      return json({ error: "CHECKOUT_FAILED" }, 500);
+    }
+  }
   if (path === "/api/webhooks/paypal") {
     return handlePayPalWebhookRequest(request, {
       webhookId: dependencies.webhookId, verifier: dependencies.gateway, pool: dependencies.pool,
