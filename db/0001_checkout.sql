@@ -25,8 +25,11 @@ CREATE TABLE admissions (
   created_at TIMESTAMPTZ NOT NULL,
   expires_at TIMESTAMPTZ NOT NULL CHECK (expires_at > created_at),
   UNIQUE (admission_id, paypal_order_id),
-  CHECK ((state = 'CREATING_ORDER' AND paypal_order_id IS NULL) OR
-         (state <> 'CREATING_ORDER' AND paypal_order_id IS NOT NULL))
+  CONSTRAINT admissions_order_state_check CHECK (
+    (state = 'CREATING_ORDER' AND paypal_order_id IS NULL) OR
+    state = 'ABORTED' OR
+    (state <> 'CREATING_ORDER' AND state <> 'ABORTED' AND paypal_order_id IS NOT NULL)
+  )
 );
 
 CREATE INDEX admissions_expiry_idx ON admissions (expires_at) WHERE state = 'AWAITING_APPROVAL';
