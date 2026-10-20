@@ -5,6 +5,8 @@ export interface PayPalGatewayConfig {
   clientId: string;
   clientSecret: string;
   environment: "sandbox" | "live";
+  returnUrl?: string;
+  cancelUrl?: string;
   fetch?: typeof fetch;
 }
 
@@ -34,6 +36,7 @@ export class OrdersV2Gateway implements PayPalGateway {
 
   constructor(private readonly config: PayPalGatewayConfig) {
     if (!config.clientId || !config.clientSecret) throw new Error("PAYPAL_CREDENTIALS_REQUIRED");
+    if (Boolean(config.returnUrl) !== Boolean(config.cancelUrl)) throw new Error("PAYPAL_RETURN_URLS_REQUIRED");
     this.baseUrl = config.environment === "live"
       ? "https://api-m.paypal.com"
       : "https://api-m.sandbox.paypal.com";
@@ -81,7 +84,9 @@ export class OrdersV2Gateway implements PayPalGateway {
           paypal: {
             experience_context: {
               shipping_preference: "SET_PROVIDED_ADDRESS",
-              user_action: "PAY_NOW"
+              user_action: "PAY_NOW",
+              ...(this.config.returnUrl ? { return_url: this.config.returnUrl } : {}),
+              ...(this.config.cancelUrl ? { cancel_url: this.config.cancelUrl } : {})
             }
           }
         }

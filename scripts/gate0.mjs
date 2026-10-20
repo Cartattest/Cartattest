@@ -7,7 +7,9 @@ if (process.env.PAYPAL_ENV === "live") throw new Error("GATE0_SANDBOX_ONLY");
 const gateway = new OrdersV2Gateway({
   clientId: required("PAYPAL_CLIENT_ID"),
   clientSecret: required("PAYPAL_CLIENT_SECRET"),
-  environment: "sandbox"
+  environment: "sandbox",
+  ...(process.env.PAYPAL_RETURN_URL ? { returnUrl: process.env.PAYPAL_RETURN_URL } : {}),
+  ...(process.env.PAYPAL_CANCEL_URL ? { cancelUrl: process.env.PAYPAL_CANCEL_URL } : {})
 });
 
 if (action === "create" && args[0]) {

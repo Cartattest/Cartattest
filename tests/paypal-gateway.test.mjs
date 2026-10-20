@@ -11,6 +11,8 @@ test("creates one sandbox order with the admitted payee, breakdown, item and fix
     clientId: "sandbox-client",
     clientSecret: "sandbox-secret",
     environment: "sandbox",
+    returnUrl: "https://merchant.example/checkout/return",
+    cancelUrl: "https://merchant.example/checkout/cancel",
     fetch: async (url, init) => {
       calls.push({ url: String(url), init });
       if (String(url).endsWith("/v1/oauth2/token")) {
@@ -44,7 +46,16 @@ test("creates one sandbox order with the admitted payee, breakdown, item and fix
   assert.equal(payload.purchase_units[0].shipping.options, undefined);
   assert.equal(payload.payment_source.paypal.experience_context.shipping_preference, "SET_PROVIDED_ADDRESS");
   assert.equal(payload.payment_source.paypal.experience_context.user_action, "PAY_NOW");
+  assert.equal(payload.payment_source.paypal.experience_context.return_url, "https://merchant.example/checkout/return");
+  assert.equal(payload.payment_source.paypal.experience_context.cancel_url, "https://merchant.example/checkout/cancel");
   assert.equal(payload.application_context, undefined);
+});
+
+test("requires both PayPal browser return URLs when either is configured", () => {
+  assert.throws(() => new OrdersV2Gateway({
+    clientId: "sandbox-client", clientSecret: "sandbox-secret", environment: "sandbox",
+    returnUrl: "https://merchant.example/checkout/return"
+  }), { message: "PAYPAL_RETURN_URLS_REQUIRED" });
 });
 
 test("returns PayPal's payer-action link for orders that require buyer approval", async () => {
