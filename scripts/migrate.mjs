@@ -8,7 +8,8 @@ const pool = createPostgresSqlPool(databaseUrl);
 try {
   const migrations = [
     ["0001_checkout", applyCheckoutSchema],
-    ["0002_step_up_sessions", (currentPool, sql) => applySchemaMigration(currentPool, "0002_step_up_sessions", sql)]
+    ["0002_step_up_sessions", (currentPool, sql) => applySchemaMigration(currentPool, "0002_step_up_sessions", sql)],
+    ["0003_evidence_bundles", (currentPool, sql) => applySchemaMigration(currentPool, "0003_evidence_bundles", sql)]
   ];
   let appliedCount = 0;
   for (const [version, apply] of migrations) {
