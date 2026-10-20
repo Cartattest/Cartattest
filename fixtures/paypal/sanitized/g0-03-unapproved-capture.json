@@ -1,0 +1,18 @@
+{
+  "observedAtUtc": "2026-10-20T17:08:15Z",
+  "test": "G0-03",
+  "request": {
+    "method": "POST",
+    "path": "/v2/checkout/orders/{orderId}/capture",
+    "body": {},
+    "paypalRequestId": "f3c2ee7e-4ad3-4d27-bfb1-3980b6f6fd8e",
+    "orderStatusBefore": "PAYER_ACTION_REQUIRED"
+  },
+  "response": {
+    "httpStatus": 422,
+    "name": "UNPROCESSABLE_ENTITY",
+    "details": [{ "issue": "ORDER_NOT_APPROVED" }]
+  },
+  "orderStatusAfter": "PAYER_ACTION_REQUIRED",
+  "buyerApprovalRequired": true
+}
