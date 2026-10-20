@@ -1,6 +1,6 @@
 # PayPal Sandbox Gate 0 results
 
-**Status:** IN PROGRESS — G0-03 recorded; G0-01 is waiting for Sandbox buyer approval and capture.
+**Status:** IN PROGRESS — G0-01 capture and G0-03 recorded; G0-01 material projection and G0-02 remain unresolved.
 
 Use `buildpack/spec/GATE0_PAYPAL_TEST_PLAN.md` when running the full characterization. Record only sanitized fixtures; do not commit raw responses, payer data, addresses, access tokens, or credentials. Each result must name the tested Sandbox account/app, UTC date, request shape, response status, observed state, and whether fresh buyer approval was required. Results describe only this tested flow.
 
@@ -19,8 +19,8 @@ Use `buildpack/spec/GATE0_PAYPAL_TEST_PLAN.md` when running the full characteriz
 
 | Test | Result | HTTP/status observation | Buyer approval | Sanitized fixture |
 | --- | --- | --- | --- | --- |
-| G0-01 Vanilla itemized create/approve/capture | IN PROGRESS | Create + GET returned `PAYER_ACTION_REQUIRED`; approval/capture pending | Yes | — |
-| G0-02 Created-vs-approved material diff | NOT RUN | — | — | — |
+| G0-01 Vanilla itemized create/approve/capture | OBSERVED, projection incomplete | Order reached `APPROVED`; capture returned `COMPLETED`; follow-up GET returned `COMPLETED`. A post-capture GET omitted shipping preference, so current material mapper rejects it with `FIXED_SHIPPING_REQUIRED`. | Yes | `sanitized/g0-01-approved-capture.json` |
+| G0-02 Created-vs-approved material diff | NOT RUN | Create response was not retained; post-capture response does not expose shipping preference. Need a fresh order with sanitized snapshots at create and after approval. | Yes | — |
 | G0-03 Capture before approval | OBSERVED | HTTP 422 `UNPROCESSABLE_ENTITY`, issue `ORDER_NOT_APPROVED`; order remained `PAYER_ACTION_REQUIRED` | Not approved | `sanitized/g0-03-unapproved-capture.json` |
 | G0-04 Increase amount after approval | NOT RUN | — | — | — |
 | G0-05 Decrease amount after approval | NOT RUN | — | — | — |
@@ -58,3 +58,5 @@ Fill this from observed results. Do not label a PayPal behavior as a CartAttest 
 **Created vs approved material projection:** NOT RECORDED.
 
 **Mapping decisions:** —
+
+**G0-01 follow-up:** Sandbox buyer approval and capture succeeded on 2026-10-20. This is a positive observation for the exact tested flow only. The available post-capture GET omitted shipping preference, so the material projection comparison is incomplete; do not treat G0-01 or Gate 0 as complete yet.
