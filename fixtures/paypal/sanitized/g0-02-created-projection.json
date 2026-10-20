@@ -60,6 +60,12 @@
       }
     ]
   },
-  "mapperResult": "FIXED_SHIPPING_REQUIRED",
-  "note": "Sandbox GET omitted shipping_preference before buyer approval as well; preference is present in the create request but absent from this response."
+  "initialMapperResult": "FIXED_SHIPPING_REQUIRED",
+  "note": "Sandbox GET omitted shipping_preference before buyer approval; the create request set SET_PROVIDED_ADDRESS.",
+  "recheck": {
+    "observedAtUtc": "2026-10-20T17:57:00Z",
+    "orderStatus": "PAYER_ACTION_REQUIRED",
+    "materialBindingMatch": true,
+    "shippingPreferenceSource": "persisted create binding; omitted by PayPal GET"
+  }
 }

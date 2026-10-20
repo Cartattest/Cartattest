@@ -20,7 +20,7 @@ Use `buildpack/spec/GATE0_PAYPAL_TEST_PLAN.md` when running the full characteriz
 | Test | Result | HTTP/status observation | Buyer approval | Sanitized fixture |
 | --- | --- | --- | --- | --- |
 | G0-01 Vanilla itemized create/approve/capture | OBSERVED, projection incomplete | Order reached `APPROVED`; capture returned `COMPLETED`; follow-up GET returned `COMPLETED`. A post-capture GET omitted shipping preference, so current material mapper rejects it with `FIXED_SHIPPING_REQUIRED`. | Yes | `sanitized/g0-01-approved-capture.json` |
-| G0-02 Created-vs-approved material diff | IN PROGRESS | Pre-approval GET returned `PAYER_ACTION_REQUIRED`; material fields were captured in sanitized form. `shipping_preference` was absent before approval as well as after capture; awaiting approval to compare the remaining fields. | Yes | `sanitized/g0-02-created-projection.json` |
+| G0-02 Created-vs-approved material diff | IN PROGRESS | Pre-approval GET returned `PAYER_ACTION_REQUIRED`; its material binding matched the expected create binding when using the persisted shipping preference, which PayPal omitted. Awaiting buyer approval for the approved-side comparison. | Yes | `sanitized/g0-02-created-projection.json` |
 | G0-03 Capture before approval | OBSERVED | HTTP 422 `UNPROCESSABLE_ENTITY`, issue `ORDER_NOT_APPROVED`; order remained `PAYER_ACTION_REQUIRED` | Not approved | `sanitized/g0-03-unapproved-capture.json` |
 | G0-04 Increase amount after approval | NOT RUN | — | — | — |
 | G0-05 Decrease amount after approval | NOT RUN | — | — | — |
