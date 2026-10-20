@@ -161,8 +161,8 @@ export interface CartBindingV1 {
     preference: "SET_PROVIDED_ADDRESS";
     name: string;
     address: NormalizedAddress;
-    optionId: string;
-    type: string;
+    optionId?: string;
+    type?: string;
     amount: string;
   };
   items: CartBindingItemV1[];

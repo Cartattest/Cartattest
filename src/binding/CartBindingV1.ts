@@ -48,12 +48,17 @@ export function mapPayPalOrderToBinding(value: unknown): CartBindingV1 {
 
   const shipping = object(unit.shipping, "PAYPAL_SHIPPING_MISSING");
   const address = object(shipping.address, "PAYPAL_SHIPPING_ADDRESS_MISSING");
-  const selectedOptions = Array.isArray(shipping.options)
-    ? shipping.options.map((option) => object(option, "PAYPAL_SHIPPING_OPTION_INVALID")).filter((option) => option.selected === true)
+  const shippingOptions = Array.isArray(shipping.options)
+    ? shipping.options.map((option) => object(option, "PAYPAL_SHIPPING_OPTION_INVALID"))
     : [];
-  if (selectedOptions.length !== 1) throw new Error("PAYPAL_SELECTED_SHIPPING_OPTION_INVALID");
-  const selectedOption = selectedOptions[0]!;
-  const optionType = selectedOption.type === undefined ? "SHIPPING" : string(selectedOption.type, "PAYPAL_SHIPPING_TYPE_MISSING");
+  const selectedOptions = shippingOptions.filter((option) => option.selected === true);
+  if (selectedOptions.length > 1 || (shippingOptions.length > 0 && selectedOptions.length !== 1)) {
+    throw new Error("PAYPAL_SELECTED_SHIPPING_OPTION_INVALID");
+  }
+  const selectedOption = selectedOptions[0];
+  const optionType = selectedOption?.type === undefined
+    ? selectedOption ? "SHIPPING" : undefined
+    : string(selectedOption.type, "PAYPAL_SHIPPING_TYPE_MISSING");
   const shippingName = object(shipping.name, "PAYPAL_SHIPPING_NAME_MISSING");
   const addressBinding = mapAddress(address);
 
@@ -84,9 +89,9 @@ export function mapPayPalOrderToBinding(value: unknown): CartBindingV1 {
       preference: "SET_PROVIDED_ADDRESS",
       name: string(shippingName.full_name, "PAYPAL_SHIPPING_NAME_MISSING"),
       address: addressBinding,
-      optionId: string(selectedOption.id, "PAYPAL_SHIPPING_OPTION_ID_MISSING"),
-      type: optionType,
-      amount: money(selectedOption.amount, currency)
+      ...(selectedOption ? { optionId: string(selectedOption.id, "PAYPAL_SHIPPING_OPTION_ID_MISSING") } : {}),
+      ...(optionType ? { type: optionType } : {}),
+      amount: selectedOption ? money(selectedOption.amount, currency) : amountBreakdown.shipping
     },
     items
   };
@@ -106,7 +111,8 @@ export function mapPayPalOrderToBinding(value: unknown): CartBindingV1 {
  * - canonicalize with RFC 8785/JCS before SHA-256
  */
 export function assertBindingEqual(expected: CartBindingV1, actual: CartBindingV1): void {
-  if (canonicalBinding(expected) !== canonicalBinding(actual)) {
+  const optionNotReturned = actual.shipping !== undefined && actual.shipping.optionId === undefined;
+  if (canonicalBinding(expected, optionNotReturned) !== canonicalBinding(actual, optionNotReturned)) {
     throw new Error("CART_BINDING_MISMATCH");
   }
 }
@@ -115,8 +121,13 @@ export async function hashCartBinding(binding: CartBindingV1): Promise<Sha256> {
   return sha256(canonicalBinding(binding));
 }
 
-function canonicalBinding(binding: CartBindingV1): string {
-  const serialized = canonicalize(binding);
+function canonicalBinding(binding: CartBindingV1, omitShippingOption = false): string {
+  let comparable = binding;
+  if (omitShippingOption) {
+    const { optionId: _optionId, type: _type, ...shipping } = binding.shipping;
+    comparable = { ...binding, shipping };
+  }
+  const serialized = canonicalize(comparable);
   if (serialized === undefined) throw new Error("CART_BINDING_NOT_JSON");
   return serialized;
 }

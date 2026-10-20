@@ -82,6 +82,17 @@ test("maps one approved PayPal purchase unit and ignores non-material response m
   });
 });
 
+test("compares fixed-address shipping by address and charge when PayPal omits unsupported options", () => {
+  const expected = cartBinding.mapPayPalOrderToBinding(order);
+  const fixedAddressOrder = structuredClone(order);
+  delete fixedAddressOrder.purchase_units[0].shipping.options;
+  const actual = cartBinding.mapPayPalOrderToBinding(fixedAddressOrder);
+
+  assert.equal(actual.shipping.amount, "3.50");
+  assert.equal(actual.shipping.optionId, undefined);
+  assert.doesNotThrow(() => cartBinding.assertBindingEqual(expected, actual));
+});
+
 test("binds every material PayPal field", () => {
   const expected = cartBinding.mapPayPalOrderToBinding(order);
   const mutations = [

@@ -37,11 +37,11 @@ test("creates one sandbox order with the admitted payee, breakdown, item and fix
   assert.match(createCall.init.headers["PayPal-Request-Id"], /^[0-9a-f-]{36}$/i);
   assert.equal(payload.intent, "CAPTURE");
   assert.equal(payload.purchase_units.length, 1);
-  assert.equal(payload.purchase_units[0].payee.merchant_id, binding.payee.identityValue);
+  assert.equal(payload.purchase_units[0].payee.email_address, binding.payee.identityValue);
   assert.deepEqual(payload.purchase_units[0].amount.breakdown.handling, { currency_code: "GBP", value: "0.00" });
   assert.equal(payload.purchase_units[0].items[0].sku, "SHELL-BLUE-M");
   assert.equal(payload.purchase_units[0].shipping.address.country_code, "IE");
-  assert.equal(payload.purchase_units[0].shipping.options[0].selected, true);
+  assert.equal(payload.purchase_units[0].shipping.options, undefined);
   assert.equal(payload.payment_source.paypal.experience_context.shipping_preference, "SET_PROVIDED_ADDRESS");
   assert.equal(payload.payment_source.paypal.experience_context.user_action, "PAY_NOW");
   assert.equal(payload.application_context, undefined);
@@ -161,11 +161,11 @@ test("reports PayPal API failures without including unrelated response fields", 
     environment: "sandbox",
     fetch: async (url) => String(url).endsWith("/v1/oauth2/token")
       ? json({ access_token: "sandbox-token", expires_in: 3600 })
-      : json({ name: "RESOURCE_NOT_FOUND", debug_id: "private-debug-id" }, 404)
+      : json({ name: "RESOURCE_NOT_FOUND", debug_id: "private-debug-id", details: [{ issue: "ORDER_MISSING", field: "/id" }] }, 404)
   });
 
   await assert.rejects(gateway.getOrder("SANDBOX-ORDER-1"), (error) => {
-    assert.match(error.message, /PAYPAL_API_FAILED 404 RESOURCE_NOT_FOUND/);
+    assert.match(error.message, /PAYPAL_API_FAILED 404 RESOURCE_NOT_FOUND details=ORDER_MISSING@\/id/);
     assert.doesNotMatch(error.message, /private-debug-id/);
     return true;
   });

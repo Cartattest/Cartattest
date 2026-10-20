@@ -86,7 +86,8 @@ function paypalOrder() {
     intent: binding.intent,
     payment_source: { paypal: { experience_context: { shipping_preference: binding.shipping.preference } } },
     purchase_units: [{
-      payee: { merchant_id: binding.payee.identityValue },
+      payee: binding.payee.identityType === "EMAIL"
+        ? { email_address: binding.payee.identityValue } : { merchant_id: binding.payee.identityValue },
       amount: { currency_code: binding.currency, value: binding.amountBreakdown.total, breakdown: {
         item_total: money(binding.amountBreakdown.itemTotal), tax_total: money(binding.amountBreakdown.taxTotal),
         shipping: money(binding.amountBreakdown.shipping), handling: money(binding.amountBreakdown.handling),
@@ -96,7 +97,7 @@ function paypalOrder() {
       shipping: { name: { full_name: binding.shipping.name }, address: {
         address_line_1: binding.shipping.address.addressLine1, admin_area_2: binding.shipping.address.adminArea2,
         postal_code: binding.shipping.address.postalCode, country_code: binding.shipping.address.countryCode
-      }, options: [{ id: binding.shipping.optionId, type: binding.shipping.type, amount: money(binding.shipping.amount), selected: true }] },
+      } },
       items: binding.items.map((item) => ({ ...item, unit_amount: money(item.unitAmount), tax: money(item.tax) }))
     }],
     status: "CREATED"

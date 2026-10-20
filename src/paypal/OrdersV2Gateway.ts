@@ -71,14 +71,7 @@ export class OrdersV2Gateway implements PayPalGateway {
           items: unit,
           shipping: {
             name: { full_name: binding.shipping.name },
-            address: paypalAddress(binding.shipping.address),
-            options: [{
-              id: binding.shipping.optionId,
-              label: binding.shipping.type,
-              type: binding.shipping.type,
-              amount: money(binding, binding.shipping.amount),
-              selected: true
-            }]
+            address: paypalAddress(binding.shipping.address)
           },
           payee: binding.payee.identityType === "MERCHANT_ID"
             ? { merchant_id: binding.payee.identityValue }
@@ -240,8 +233,8 @@ function safeError(value: unknown): string {
       return [typeof item.issue === "string" ? `${item.issue}${typeof item.field === "string" ? `@${item.field}` : ""}` : ""];
     }).filter(Boolean).join(",")
     : "";
-  return [body.name ?? body.error ?? body.message ?? "unknown response", details && `details=${details}`,
-    typeof body.debug_id === "string" && `debug_id=${body.debug_id}`].filter(Boolean).join(" ").slice(0, 300);
+  return [body.name ?? body.error ?? body.message ?? "unknown response", details && `details=${details}`]
+    .filter(Boolean).join(" ").slice(0, 300);
 }
 
 function nonempty(value: unknown): value is string {
