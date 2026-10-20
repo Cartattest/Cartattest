@@ -169,6 +169,19 @@ test("rejects a changed intent and mutable shipping preference", () => {
     ...order,
     application_context: { shipping_preference: "GET_FROM_FILE" }
   }), { message: "FIXED_SHIPPING_REQUIRED" });
+  assert.throws(() => cartBinding.mapPayPalOrderToBinding({
+    ...order,
+    application_context: { shipping_preference: "GET_FROM_FILE" }
+  }, "SET_PROVIDED_ADDRESS"), { message: "FIXED_SHIPPING_REQUIRED" });
+});
+
+test("uses the persisted shipping preference only when PayPal omits it", () => {
+  const omittedPreference = structuredClone(order);
+  delete omittedPreference.application_context;
+  assert.equal(
+    cartBinding.mapPayPalOrderToBinding(omittedPreference, "SET_PROVIDED_ADDRESS").shipping.preference,
+    "SET_PROVIDED_ADDRESS"
+  );
 });
 
 test("binding equality uses canonical JSON rather than object insertion order", () => {
