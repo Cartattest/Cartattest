@@ -47,6 +47,21 @@ test("creates one sandbox order with the admitted payee, breakdown, item and fix
   assert.equal(payload.application_context, undefined);
 });
 
+test("returns PayPal's payer-action link for orders that require buyer approval", async () => {
+  const gateway = new OrdersV2Gateway({
+    clientId: "sandbox-client", clientSecret: "sandbox-secret", environment: "sandbox",
+    fetch: async (url) => String(url).endsWith("/v1/oauth2/token")
+      ? json({ access_token: "sandbox-token", expires_in: 3600 })
+      : json({ id: "SANDBOX-ORDER-2", status: "PAYER_ACTION_REQUIRED", links: [
+        { rel: "payer-action", href: "https://www.sandbox.paypal.com/checkout?token=SANDBOX-ORDER-2" }
+      ] })
+  });
+
+  const result = await gateway.getOrder("SANDBOX-ORDER-2");
+
+  assert.equal(result.approvalUrl, "https://www.sandbox.paypal.com/checkout?token=SANDBOX-ORDER-2");
+});
+
 test("captures with the persisted request ID and returns PayPal HTTP and capture statuses", async () => {
   const calls = [];
   const gateway = new OrdersV2Gateway({

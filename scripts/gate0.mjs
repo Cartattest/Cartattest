@@ -19,7 +19,7 @@ if (action === "create" && args[0]) {
   console.log(JSON.stringify({ orderId: order.orderId, status: order.orderStatus, approvalUrl: order.approvalUrl }, null, 2));
 } else if (action === "get" && args[0]) {
   const order = await gateway.getOrder(args[0]);
-  console.log(JSON.stringify({ orderId: order.orderId, status: order.orderStatus }, null, 2));
+  console.log(JSON.stringify({ orderId: order.orderId, status: order.orderStatus, approvalUrl: order.approvalUrl }, null, 2));
 } else if (action === "capture" && args[0] && args[1]) {
   const result = await gateway.captureOrder(args[0], args[1]);
   console.log(JSON.stringify({ orderId: result.orderId, captureId: result.captureId, captureStatus: result.captureStatus }, null, 2));

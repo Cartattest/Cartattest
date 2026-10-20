@@ -200,7 +200,7 @@ function assertSupportedBinding(binding: CartBindingV1): void {
 
 function snapshot(order: PayPalOrderResponse): PayPalOrderSnapshot {
   if (!order.id || !order.status) throw new Error("PAYPAL_ORDER_RESPONSE_INVALID");
-  const approval = order.links?.find((link) => link.rel === "approve")?.href;
+  const approval = order.links?.find((link) => link.rel === "approve" || link.rel === "payer-action")?.href;
   return { orderId: order.id, orderStatus: order.status, ...(approval ? { approvalUrl: approval } : {}), raw: order };
 }
 
