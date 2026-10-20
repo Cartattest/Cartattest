@@ -87,6 +87,16 @@ test("does not accept an arbitrary PayPal return token without a stored admissio
   assert.deepEqual(calls[0].values, ["ORDER-UNKNOWN"]);
 });
 
+test("reports webhook setup as unavailable until the PayPal webhook ID is configured", async () => {
+  const deps = dependencies({ async connect() { assert.fail("unconfigured webhooks must not access persistence"); } });
+  deps.webhookId = "";
+  const response = await handleCheckoutApiRequest(new Request("https://service.example/api/webhooks/paypal", {
+    method: "POST", headers: { "content-type": "application/json" }, body: "{}"
+  }), deps);
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), { error: "PAYPAL_WEBHOOK_NOT_CONFIGURED" });
+});
+
 test("serves only the frozen buyer-facing context from an unconsumed STEP-UP session", async () => {
   const context = {
     schemaVersion: "step-up-context-v1", claimIds: ["waterproof"], expiresAt: "2026-10-18T12:10:00.000Z",

@@ -62,6 +62,7 @@ export async function handleCheckoutApiRequest(request: Request, dependencies: C
     }
   }
   if (path === "/api/webhooks/paypal") {
+    if (!dependencies.webhookId) return json({ error: "PAYPAL_WEBHOOK_NOT_CONFIGURED" }, 503);
     return handlePayPalWebhookRequest(request, {
       webhookId: dependencies.webhookId, verifier: dependencies.gateway, pool: dependencies.pool,
       ...(dependencies.selection.now ? { now: dependencies.selection.now } : {})
