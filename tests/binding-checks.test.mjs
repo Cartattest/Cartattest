@@ -73,6 +73,32 @@ test("creates an order and exposes approval only after Binding A passes", async 
   assert.deepEqual(calls, ["create", "get"]);
 });
 
+test("accepts PayPal's PAYER_ACTION_REQUIRED status during Binding A", async () => {
+  const gateway = {
+    createOrder: async () => ({ orderId: "ORDER-1", orderStatus: "PAYER_ACTION_REQUIRED", approvalUrl: "https://paypal.example/approve", raw: {} }),
+    getOrder: async () => ({ orderId: "ORDER-1", orderStatus: "PAYER_ACTION_REQUIRED", raw: paypalOrder("PAYER_ACTION_REQUIRED") })
+  };
+
+  assert.deepEqual(await createOrderWithBindingA(gateway, binding), {
+    orderId: "ORDER-1",
+    approvalUrl: "https://paypal.example/approve"
+  });
+});
+
+test("uses the admitted shipping preference when PayPal omits it from the order response", async () => {
+  const orderWithoutPreference = paypalOrder("PAYER_ACTION_REQUIRED");
+  delete orderWithoutPreference.payment_source;
+  const gateway = {
+    createOrder: async () => ({ orderId: "ORDER-1", orderStatus: "PAYER_ACTION_REQUIRED", approvalUrl: "https://paypal.example/approve", raw: {} }),
+    getOrder: async () => ({ orderId: "ORDER-1", orderStatus: "PAYER_ACTION_REQUIRED", raw: orderWithoutPreference })
+  };
+
+  assert.deepEqual(await createOrderWithBindingA(gateway, binding), {
+    orderId: "ORDER-1",
+    approvalUrl: "https://paypal.example/approve"
+  });
+});
+
 test("does not expose approval when Binding A detects order drift", async () => {
   const gateway = {
     createOrder: async () => ({ orderId: "ORDER-1", orderStatus: "CREATED", approvalUrl: "https://paypal.example/approve", raw: {} }),

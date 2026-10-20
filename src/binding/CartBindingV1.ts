@@ -11,7 +11,10 @@ import type {
 type JsonObject = Record<string, unknown>;
 
 /** Project only the material CartBindingV1 fields from a PayPal Orders v2 response. */
-export function mapPayPalOrderToBinding(value: unknown): CartBindingV1 {
+export function mapPayPalOrderToBinding(
+  value: unknown,
+  missingShippingPreference?: CartBindingV1["shipping"]["preference"]
+): CartBindingV1 {
   const order = object(value, "PAYPAL_ORDER_INVALID");
   if (order.intent !== "CAPTURE") throw new Error("UNSUPPORTED_PAYPAL_INTENT");
 
@@ -20,7 +23,8 @@ export function mapPayPalOrderToBinding(value: unknown): CartBindingV1 {
     throw new Error("UNSUPPORTED_PURCHASE_UNIT_COUNT");
   }
   const unit = object(purchaseUnits[0], "PAYPAL_PURCHASE_UNIT_INVALID");
-  const preference = shippingPreference(order);
+  // Orders v2 GET omits this create-time setting; use only the persisted value supplied by the caller.
+  const preference = shippingPreference(order) ?? missingShippingPreference;
   if (preference !== "SET_PROVIDED_ADDRESS") throw new Error("FIXED_SHIPPING_REQUIRED");
 
   const payee = object(unit.payee, "PAYPAL_PAYEE_MISSING");

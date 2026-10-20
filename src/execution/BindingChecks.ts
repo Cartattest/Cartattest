@@ -7,7 +7,9 @@ export async function createOrderWithBindingA(
   admittedBinding: CartBindingV1
 ): Promise<{ orderId: string; approvalUrl: string }> {
   const created = await gateway.createOrder(admittedBinding);
-  if (created.orderStatus !== "CREATED") throw new Error("PAYPAL_ORDER_NOT_CREATED");
+  if (created.orderStatus !== "CREATED" && created.orderStatus !== "PAYER_ACTION_REQUIRED") {
+    throw new Error("PAYPAL_ORDER_NOT_CREATED");
+  }
   const current = await gateway.getOrder(created.orderId);
   assertOrderMatches(current, created.orderId, "CREATED", admittedBinding);
   if (!created.approvalUrl) throw new Error("PAYPAL_APPROVAL_LINK_MISSING");
@@ -34,8 +36,11 @@ function assertOrderMatches(
   admittedBinding: CartBindingV1
 ): void {
   if (current.orderId !== expectedOrderId) throw new Error("PAYPAL_ORDER_ID_MISMATCH");
-  if (current.orderStatus !== expectedStatus) {
+  const statusMatches = expectedStatus === "CREATED"
+    ? current.orderStatus === "CREATED" || current.orderStatus === "PAYER_ACTION_REQUIRED"
+    : current.orderStatus === expectedStatus;
+  if (!statusMatches) {
     throw new Error(expectedStatus === "APPROVED" ? "PAYPAL_ORDER_NOT_APPROVED" : "PAYPAL_ORDER_NOT_CREATED");
   }
-  assertBindingEqual(admittedBinding, mapPayPalOrderToBinding(current.raw));
+  assertBindingEqual(admittedBinding, mapPayPalOrderToBinding(current.raw, admittedBinding.shipping.preference));
 }
