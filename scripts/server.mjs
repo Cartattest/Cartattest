@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { createPublicKey } from "node:crypto";
+import { createPrivateKey, createPublicKey } from "node:crypto";
 import { FixtureMerchantAdapter } from "../dist/merchant/FixtureMerchantAdapter.js";
 import { OrdersV2Gateway } from "../dist/paypal/OrdersV2Gateway.js";
 import { createPostgresSqlPool } from "../dist/persistence/PostgresSqlPool.js";
@@ -24,6 +24,20 @@ const keyPem = await readFile(process.env.CARTATTEST_BUYER_PUBLIC_KEY_PATH, "utf
 const keyDer = createPublicKey(keyPem).export({ type: "spki", format: "der" });
 const buyerKey = await crypto.subtle.importKey("spki", keyDer, { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]);
 const buyerKeys = new Map([[process.env.CARTATTEST_BUYER_KEY_ID, buyerKey]]);
+const servicePrivatePath = process.env.CARTATTEST_SERVICE_PRIVATE_KEY_PATH || ".codex/keys/service.private.pem";
+const servicePublicPath = process.env.CARTATTEST_SERVICE_PUBLIC_KEY_PATH || ".codex/keys/service.public.pem";
+let evidenceBundleSigning;
+if (servicePrivatePath && servicePublicPath) {
+  const [privatePem, publicPem] = await Promise.all([readFile(servicePrivatePath, "utf8"), readFile(servicePublicPath, "utf8")]);
+  const privateDer = createPrivateKey(privatePem).export({ type: "pkcs8", format: "der" });
+  const publicDer = createPublicKey(publicPem).export({ type: "spki", format: "der" });
+  const derivedPublicDer = createPublicKey(createPrivateKey(privatePem)).export({ type: "spki", format: "der" });
+  if (!derivedPublicDer.equals(publicDer)) throw new Error("CARTATTEST_SERVICE_KEY_PAIR_MISMATCH");
+  const privateKey = await crypto.subtle.importKey("pkcs8", privateDer, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
+  const publicKey = await crypto.subtle.importKey("spki", publicDer, { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]);
+  const keyId = process.env.CARTATTEST_SERVICE_KEY_ID || "service-local-v1";
+  evidenceBundleSigning = { keyId, privateKey, trustedKeys: new Map([[keyId, publicKey]]) };
+}
 
 const [catalogue, manifestFile] = await Promise.all([
   readJson(new URL("../fixtures/merchant/catalogue.json", import.meta.url)),
@@ -61,6 +75,7 @@ const server = createCheckoutHttpServer({
   gateway,
   webhookId: process.env.PAYPAL_WEBHOOK_ID,
   policyVersion: "policy-v1",
+  ...(evidenceBundleSigning ? { evidenceBundleSigning } : {}),
   selection: {
     verifyBuyerSignature: (claimSet) => verifyClaimSetSignature(claimSet, buyerKeys),
     verifyOverride: (override) => verifyBuyerOverrideSignature(override, buyerKeys),

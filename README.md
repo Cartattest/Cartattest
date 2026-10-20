@@ -11,12 +11,12 @@ CartAttest checks whether an AI shopping agent's product choice matches the buye
 - Atomic capture attempts, GET-first reconciliation after uncertain capture responses, and verified, idempotent PayPal webhook handling.
 - Server-side PayPal approval return and cancellation handlers that resolve order tokens through persisted admissions.
 - Signed evidence-bundle creation and verification against an externally pinned key.
-- A PayPal Sandbox HTTP server composition, local buyer-key generation, CI tests and secret scanning.
+- A PayPal Sandbox HTTP server, buyer STEP-UP and verified receipt pages, automatic signed bundle finalization, CI tests and secret scanning.
 - Dependency-injected API handlers and a versioned PostgreSQL schema.
 
 ## Current limits
 
-The buyer-facing Claim Set, STEP-UP and receipt pages, automatic evidence-bundle assembly, replay mode and configured semantic-attestor provider are not complete. The Sandbox server fails closed on semantic claims until evaluation inputs are frozen and an attestor is configured. The fixture merchant is for development only.
+Replay mode and a configured semantic-attestor provider are not complete. The Sandbox server fails closed on semantic claims until evaluation inputs are frozen and an attestor is configured. The fixture merchant is for development only. Receipt signing uses a local key generated with `pnpm keygen service-local-v1 .codex/keys/service`; production deployments must pin and manage their signing key outside the application bundle.
 
 Gate 0 is still in progress: a Sandbox order was approved and captured, but the material create-vs-approval projection and remaining mutation/webhook observations are incomplete. See [fixtures/paypal/gate0-summary.md](fixtures/paypal/gate0-summary.md) and [HOW_TO.md](HOW_TO.md). Unit tests do not replace live PostgreSQL or end-to-end checkout verification.
 

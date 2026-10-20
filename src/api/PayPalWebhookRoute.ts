@@ -6,7 +6,7 @@ const maxBodyBytes = 1_000_000;
 
 export async function handlePayPalWebhookRequest(
   request: Request,
-  dependencies: { webhookId: string; verifier: PayPalWebhookVerifier; pool: SqlPool; now?: () => Date }
+  dependencies: { webhookId: string; verifier: PayPalWebhookVerifier; pool: SqlPool; now?: () => Date; onVerifiedEvent?(): Promise<void> }
 ): Promise<Response> {
   if (new URL(request.url).pathname !== "/api/webhooks/paypal") return json({ error: "NOT_FOUND" }, 404);
   if (request.method !== "POST") return json({ error: "METHOD_NOT_ALLOWED" }, 405, { Allow: "POST" });
@@ -30,6 +30,7 @@ export async function handlePayPalWebhookRequest(
   copyHeader(request.headers, headers, "paypal-transmission-time");
   try {
     const result = await processPayPalWebhook(rawBody, headers, dependencies);
+    await dependencies.onVerifiedEvent?.();
     return json({ received: true, result }, 200);
   } catch (error) {
     const message = error instanceof Error ? error.message : "PAYPAL_WEBHOOK_FAILED";

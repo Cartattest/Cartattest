@@ -5,6 +5,7 @@ import test from "node:test";
 import { handleCheckoutApiRequest } from "../dist/api/CheckoutApi.js";
 import { sha256 } from "../dist/domain/Hash.js";
 import { hashCartBinding } from "../dist/binding/CartBindingV1.js";
+import { createEvidenceBundle } from "../dist/bundle/EvidenceBundle.js";
 
 const claimSet = {
   schemaVersion: "claim-set-v1", claimSetId: "claim-set-1", buyerRequestText: "Waterproof jacket under GBP 100",
@@ -85,6 +86,31 @@ test("does not accept an arbitrary PayPal return token without a stored admissio
   assert.equal(response.status, 404);
   assert.deepEqual(await response.json(), { error: "ADMISSION_NOT_FOUND" });
   assert.deepEqual(calls[0].values, ["ORDER-UNKNOWN"]);
+});
+
+test("serves only a verified receipt projection without exposing shipping details", async () => {
+  const pair = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+  const signing = { keyId: "service-test", privateKey: pair.privateKey, trustedKeys: new Map([["service-test", pair.publicKey]]) };
+  const bundle = await createEvidenceBundle({ bundleId: "admission-1", events: [
+    { recordType: "ResolvedSelection", payload: { cartBinding: {
+      items: [{ name: "Trail Jacket", sku: "J-1", quantity: "1" }], currency: "EUR",
+      amountBreakdown: { total: "80.00" }, shipping: { address: { postalCode: "SECRET" } }
+    } } },
+    { recordType: "BuyerClaimSet", payload: { claims: [{ claimId: "c1", humanText: "Waterproof" }] } },
+    { recordType: "AdmissionRecord", payload: { outcome: "ALLOW", policyVersion: "policy-v1" } },
+    { recordType: "CaptureAttempt", payload: { state: "CLOSED_RECONCILED", paypalCaptureStatus: "COMPLETED", paypalCaptureId: "CAPTURE-1" } }
+  ], seal: { closureState: "CLOSED_RECONCILED", sealedAt: "2026-10-20T12:00:00.000Z" }, keyId: signing.keyId, privateKey: signing.privateKey });
+  const deps = dependencies({ async connect() { return {
+    async query() { return { rows: [{ bundle }] }; }, release() {}
+  }; } });
+  deps.evidenceBundleSigning = signing;
+  const response = await handleCheckoutApiRequest(new Request("https://service.example/api/receipts/admission-1"), deps);
+  const body = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(body.verified, true);
+  assert.equal(body.item.name, "Trail Jacket");
+  assert.equal(body.capture.captureId, "CAPTURE-1");
+  assert.equal(JSON.stringify(body).includes("SECRET"), false);
 });
 
 test("reports webhook setup as unavailable until the PayPal webhook ID is configured", async () => {

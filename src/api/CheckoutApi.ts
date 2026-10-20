@@ -13,6 +13,8 @@ import { parseBuyerOverrideV1 } from "./BuyerOverrideValidation.js";
 import { evaluateStepUpDecision, type StepUpContextV1 } from "../application/StepUpDecisionService.js";
 import type { BuyerOverrideV1 } from "../domain/types.js";
 import canonicalize from "canonicalize";
+import { finalizeEvidenceBundle, type EvidenceBundleSigningConfig } from "../application/FinalizeEvidenceBundle.js";
+import { loadEvidenceBundle } from "../persistence/EvidenceBundleRepository.js";
 
 const maxRequestBytes = 128_000;
 
@@ -22,6 +24,7 @@ export interface CheckoutApiDependencies {
   selection: Omit<SelectionAdmissionDependencies, "loadClaimSet">;
   webhookId: string;
   policyVersion: string;
+  evidenceBundleSigning?: EvidenceBundleSigningConfig;
 }
 
 export async function handleCheckoutApiRequest(request: Request, dependencies: CheckoutApiDependencies): Promise<Response> {
@@ -43,15 +46,20 @@ export async function handleCheckoutApiRequest(request: Request, dependencies: C
         return json(await loadCheckoutStatus(dependencies.pool, admission.admissionId), 200);
       }
       if (admission.admissionState === "CLOSED") {
+        const bundle = await finalizeClosedAdmission(admission.admissionId, dependencies);
+        if (bundle && acceptsHtmlNavigation(request)) return new Response(null, { status: 303, headers: { Location: `/receipt/${encodeURIComponent(bundle.bundleId)}` } });
         return json(await loadCheckoutStatus(dependencies.pool, admission.admissionId), 200);
       }
       const attempt = await completeCheckout({ admissionId: admission.admissionId }, {
         pool: dependencies.pool, gateway: dependencies.gateway, newId: dependencies.selection.newId,
         ...(dependencies.selection.now ? { now: dependencies.selection.now } : {})
       });
+      const bundle = isClosedCapture(attempt.state) ? await finalizeClosedAdmission(admission.admissionId, dependencies) : undefined;
+      if (bundle && acceptsHtmlNavigation(request)) return new Response(null, { status: 303, headers: { Location: `/receipt/${encodeURIComponent(bundle.bundleId)}` } });
       return json({ state: attempt.state,
         ...(attempt.paypalCaptureId ? { captureId: attempt.paypalCaptureId } : {}),
-        ...(attempt.paypalCaptureStatus ? { captureStatus: attempt.paypalCaptureStatus } : {}) }, 200);
+        ...(attempt.paypalCaptureStatus ? { captureStatus: attempt.paypalCaptureStatus } : {}),
+        ...(bundle ? { receiptUrl: `/receipt/${encodeURIComponent(bundle.bundleId)}` } : {}) }, 200);
     } catch (error) {
       const message = error instanceof Error ? error.message : "CHECKOUT_FAILED";
       if (message === "INVALID_PAYPAL_ORDER_ID") return json({ error: message }, 400);
@@ -66,8 +74,39 @@ export async function handleCheckoutApiRequest(request: Request, dependencies: C
     if (!dependencies.webhookId) return json({ error: "PAYPAL_WEBHOOK_NOT_CONFIGURED" }, 503);
     return handlePayPalWebhookRequest(request, {
       webhookId: dependencies.webhookId, verifier: dependencies.gateway, pool: dependencies.pool,
+      ...(dependencies.evidenceBundleSigning ? { onVerifiedEvent: async () => {
+        // Retry closes whose earlier bundle write failed, including when PayPal retries a webhook.
+        const client = await dependencies.pool.connect();
+        let admissions: string[];
+        try {
+          const closed = await client.query(`SELECT a.admission_id AS "admissionId" FROM admissions a
+            JOIN capture_attempts ca ON ca.admission_id = a.admission_id
+            WHERE a.state = 'CLOSED' AND ca.state IN ('CLOSED_VERIFIED_WEBHOOK', 'CLOSED_RECONCILED')
+              AND NOT EXISTS (SELECT 1 FROM evidence_bundles eb WHERE eb.bundle_id = a.admission_id)
+            ORDER BY ca.updated_at`);
+          admissions = closed.rows.map((row) => row.admissionId).filter((id): id is string => typeof id === "string");
+        } finally { client.release(); }
+        for (const admissionId of admissions) await finalizeEvidenceBundle(dependencies.pool, admissionId, dependencies.evidenceBundleSigning!);
+      } } : {}),
       ...(dependencies.selection.now ? { now: dependencies.selection.now } : {})
     });
+  }
+  const receiptMatch = /^\/api\/receipts\/([^/]+)$/.exec(path);
+  if (receiptMatch) {
+    if (request.method !== "GET") return json({ error: "METHOD_NOT_ALLOWED" }, 405, { Allow: "GET" });
+    if (!dependencies.evidenceBundleSigning) return json({ error: "RECEIPTS_NOT_CONFIGURED" }, 503);
+    let bundleId: string;
+    try { bundleId = decodeURIComponent(receiptMatch[1]!); }
+    catch { return json({ error: "INVALID_BUNDLE_ID" }, 400); }
+    try {
+      const bundle = await loadEvidenceBundle(dependencies.pool, bundleId, dependencies.evidenceBundleSigning.trustedKeys);
+      return json(receiptProjection(bundle), 200);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "RECEIPT_UNAVAILABLE";
+      if (message === "INVALID_BUNDLE_ID") return json({ error: message }, 400);
+      if (message === "EVIDENCE_BUNDLE_NOT_FOUND") return json({ error: message }, 404);
+      return json({ error: "RECEIPT_VERIFICATION_FAILED" }, 503);
+    }
   }
   const statusMatch = /^\/api\/checkouts\/([^/]+)$/.exec(path);
   if (statusMatch) {
@@ -153,8 +192,10 @@ export async function handleCheckoutApiRequest(request: Request, dependencies: C
       pool: dependencies.pool, gateway: dependencies.gateway, newId: dependencies.selection.newId,
       ...(dependencies.selection.now ? { now: dependencies.selection.now } : {})
     });
+    const bundle = isClosedCapture(result.state) ? await finalizeClosedAdmission(String((body as { admissionId?: unknown }).admissionId), dependencies) : undefined;
     return json({ state: result.state, ...(result.paypalCaptureId ? { captureId: result.paypalCaptureId } : {}),
-      ...(result.paypalCaptureStatus ? { captureStatus: result.paypalCaptureStatus } : {}) }, 200);
+      ...(result.paypalCaptureStatus ? { captureStatus: result.paypalCaptureStatus } : {}),
+      ...(bundle ? { receiptUrl: `/receipt/${encodeURIComponent(bundle.bundleId)}` } : {}) }, 200);
   } catch (error) {
     const message = error instanceof Error ? error.message : "CHECKOUT_FAILED";
     if (message === "CLAIM_SET_ID_CONFLICT") return json({ error: message }, 409);
@@ -308,6 +349,59 @@ function isStepUpContext(value: unknown): value is StepUpContextV1 {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+async function finalizeClosedAdmission(admissionId: string, dependencies: CheckoutApiDependencies) {
+  return dependencies.evidenceBundleSigning
+    ? finalizeEvidenceBundle(dependencies.pool, admissionId, dependencies.evidenceBundleSigning)
+    : undefined;
+}
+
+function isClosedCapture(state: string): state is "CLOSED_VERIFIED_WEBHOOK" | "CLOSED_RECONCILED" {
+  return state === "CLOSED_VERIFIED_WEBHOOK" || state === "CLOSED_RECONCILED";
+}
+
+function acceptsHtmlNavigation(request: Request): boolean {
+  return (request.headers.get("accept") ?? "").includes("text/html");
+}
+
+function receiptProjection(bundle: import("../bundle/EvidenceBundle.js").EvidenceBundleV1): unknown {
+  const payload = (type: string) => bundle.records.find((record) => record.recordType === type)?.payload;
+  const selection = payload("ResolvedSelection");
+  const claimSet = payload("BuyerClaimSet");
+  const admission = payload("AdmissionRecord");
+  const capture = payload("CaptureAttempt");
+  if (!isRecord(selection) || !isRecord(selection.cartBinding) || !Array.isArray(selection.cartBinding.items) ||
+      !isRecord(claimSet) || !Array.isArray(claimSet.claims) || !isRecord(admission) || !isRecord(capture)) {
+    throw new Error("INVALID_RECEIPT_CONTENT");
+  }
+  const binding = selection.cartBinding;
+  const item = (binding.items as unknown[])[0];
+  const claims = claimSet.claims.filter(isRecord).map((claim) => {
+    const attestation = bundle.records.find((record) => record.recordType === "SemanticAttestation" &&
+      isRecord(record.payload) && record.payload.claimId === claim.claimId)?.payload;
+    const evidenceHashes = isRecord(attestation) && Array.isArray(attestation.evidenceHashes) ? attestation.evidenceHashes : [];
+    return {
+      text: typeof claim.humanText === "string" ? claim.humanText : "",
+      evidence: bundle.records.filter((record) => record.recordType === "MerchantEvidence" && isRecord(record.payload) &&
+        evidenceHashes.includes(record.payload.rawHash))
+        .map((record) => isRecord(record.payload) ? {
+          sourceClass: record.payload.sourceClass, locator: record.payload.fieldLocator,
+          text: record.payload.modelView
+        } : undefined).filter(Boolean)
+    };
+  });
+  return {
+    verified: true,
+    sealedAt: bundle.seal.sealedAt,
+    closureState: bundle.seal.closureState,
+    item: isRecord(item) ? { name: item.name, sku: item.sku, quantity: item.quantity } : {},
+    amount: isRecord(binding.amountBreakdown) ? { total: binding.amountBreakdown.total, currency: binding.currency } : {},
+    claims,
+    admission: { outcome: admission.outcome, policyVersion: admission.policyVersion },
+    capture: { state: capture.state, status: capture.paypalCaptureStatus, captureId: capture.paypalCaptureId },
+    bundleId: bundle.bundleId
+  };
 }
 
 async function readBody(request: Request): Promise<string> {
