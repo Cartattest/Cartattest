@@ -233,7 +233,15 @@ function assertOrderId(orderId: string): void {
 function safeError(value: unknown): string {
   if (!value || typeof value !== "object") return "unknown response";
   const body = value as Record<string, unknown>;
-  return String(body.name ?? body.error ?? body.message ?? "unknown response").slice(0, 160);
+  const details = Array.isArray(body.details)
+    ? body.details.flatMap((detail) => {
+      if (!detail || typeof detail !== "object") return [];
+      const item = detail as Record<string, unknown>;
+      return [typeof item.issue === "string" ? `${item.issue}${typeof item.field === "string" ? `@${item.field}` : ""}` : ""];
+    }).filter(Boolean).join(",")
+    : "";
+  return [body.name ?? body.error ?? body.message ?? "unknown response", details && `details=${details}`,
+    typeof body.debug_id === "string" && `debug_id=${body.debug_id}`].filter(Boolean).join(" ").slice(0, 300);
 }
 
 function nonempty(value: unknown): value is string {
