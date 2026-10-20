@@ -3,8 +3,8 @@
   "intent": "CAPTURE",
   "purchaseUnitCount": 1,
   "payee": {
-    "identityType": "MERCHANT_ID",
-    "identityValue": "REPLACE_WITH_SANDBOX_MERCHANT_ID"
+    "identityType": "EMAIL",
+    "identityValue": "REPLACE_WITH_SANDBOX_BUSINESS_EMAIL"
   },
   "currency": "GBP",
   "amountBreakdown": {

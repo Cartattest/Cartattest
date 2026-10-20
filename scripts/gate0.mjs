@@ -12,6 +12,9 @@ const gateway = new OrdersV2Gateway({
 
 if (action === "create" && args[0]) {
   const binding = JSON.parse(await readFile(args[0], "utf8"));
+  if (binding.payee?.identityType === "EMAIL" && binding.payee.identityValue === "REPLACE_WITH_SANDBOX_BUSINESS_EMAIL") {
+    binding.payee.identityValue = required("PAYPAL_MERCHANT_EMAIL");
+  }
   const order = await gateway.createOrder(binding);
   console.log(JSON.stringify({ orderId: order.orderId, status: order.orderStatus, approvalUrl: order.approvalUrl }, null, 2));
 } else if (action === "get" && args[0]) {
