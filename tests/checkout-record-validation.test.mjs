@@ -50,6 +50,10 @@ test("parses a capture attempt and PayPal reconciliation fields", () => {
   assert.equal(parsed.paypalCaptureStatus, "COMPLETED");
 });
 
+test("normalizes nullable PayPal capture columns from PostgreSQL to absent contract fields", () => {
+  assert.deepEqual(parseCaptureAttemptV1({ ...attempt, paypalCaptureId: null, paypalCaptureStatus: null }), attempt);
+});
+
 test("rejects invalid capture states, capture statuses and timestamps", () => {
   assert.throws(() => parseCaptureAttemptV1({ ...attempt, state: "DONE" }), { message: "INVALID_CAPTURE_ATTEMPT" });
   assert.throws(() => parseCaptureAttemptV1({ ...attempt, paypalCaptureStatus: "AUTHORIZED" }), { message: "INVALID_CAPTURE_ATTEMPT" });

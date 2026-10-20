@@ -10,6 +10,7 @@ import { loadClaimSet, saveClaimSet } from "../persistence/ClaimSetRepository.js
 import { abortAwaitingAdmission, findAdmissionByPaypalOrderId, loadCheckoutStatus } from "../persistence/AdmissionRepository.js";
 import { consumeStepUpSession, loadStepUpSession, saveStepUpSession } from "../persistence/StepUpSessionRepository.js";
 import { parseBuyerOverrideV1 } from "./BuyerOverrideValidation.js";
+import { parseClaimSetV1 } from "./ClaimSetValidation.js";
 import { evaluateStepUpDecision, type StepUpContextV1 } from "../application/StepUpDecisionService.js";
 import type { BuyerOverrideV1 } from "../domain/types.js";
 import canonicalize from "canonicalize";
@@ -26,11 +27,28 @@ export interface CheckoutApiDependencies {
   policyVersion: string;
   evidenceBundleSigning?: EvidenceBundleSigningConfig;
   replay?: { approveOrder(orderId: string): Promise<void> };
+  buyerKeyId?: string;
 }
 
 export async function handleCheckoutApiRequest(request: Request, dependencies: CheckoutApiDependencies): Promise<Response> {
   const url = new URL(request.url);
   const path = url.pathname;
+  if (path === "/api/claim-sets/prepare") {
+    if (request.method !== "POST") return json({ error: "METHOD_NOT_ALLOWED" }, 405, { Allow: "POST" });
+    if (!/^application\/json(?:\s*;|$)/i.test(request.headers.get("content-type") ?? "")) {
+      return json({ error: "UNSUPPORTED_MEDIA_TYPE" }, 415);
+    }
+    try {
+      const claimSet = parseClaimSetV1(JSON.parse(await readBody(request)));
+      const { buyerSignature: _signature, ...payload } = claimSet;
+      const signingPayload = canonicalize(payload);
+      if (signingPayload === undefined) return json({ error: "INVALID_CLAIM_SET" }, 400);
+      return json({ claimSet: payload, signingPayload, buyerKeyId: dependencies.buyerKeyId ?? null }, 200);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "INVALID_CLAIM_SET";
+      return json({ error: message === "REQUEST_BODY_TOO_LARGE" ? message : "INVALID_CLAIM_SET" }, message === "REQUEST_BODY_TOO_LARGE" ? 413 : 400);
+    }
+  }
   if (path === "/checkout/return" || path === "/checkout/cancel") {
     if (request.method !== "GET") return json({ error: "METHOD_NOT_ALLOWED" }, 405, { Allow: "GET" });
     const tokens = url.searchParams.getAll("token");
@@ -51,9 +69,10 @@ export async function handleCheckoutApiRequest(request: Request, dependencies: C
         if (bundle && acceptsHtmlNavigation(request)) return new Response(null, { status: 303, headers: { Location: `/receipt/${encodeURIComponent(bundle.bundleId)}` } });
         return json(await loadCheckoutStatus(dependencies.pool, admission.admissionId), 200);
       }
-      const attempt = await completeCheckout({ admissionId: admission.admissionId }, {
+      const attempt = await completeCheckoutWithReplayReconciliation({ admissionId: admission.admissionId }, {
         pool: dependencies.pool, gateway: dependencies.gateway, newId: dependencies.selection.newId,
-        ...(dependencies.selection.now ? { now: dependencies.selection.now } : {})
+        ...(dependencies.selection.now ? { now: dependencies.selection.now } : {}),
+        ...(dependencies.replay ? { replay: true } : {})
       });
       const bundle = isClosedCapture(attempt.state) ? await finalizeClosedAdmission(admission.admissionId, dependencies) : undefined;
       if (bundle && acceptsHtmlNavigation(request)) return new Response(null, { status: 303, headers: { Location: `/receipt/${encodeURIComponent(bundle.bundleId)}` } });
@@ -99,7 +118,7 @@ export async function handleCheckoutApiRequest(request: Request, dependencies: C
     let orderId: string;
     try { orderId = decodeURIComponent(replayApproval[1]!); }
     catch { return json({ error: "INVALID_REPLAY_ORDER_ID" }, 400); }
-    if (!/^REPLAY-ORDER-[1-9][0-9]*$/.test(orderId)) return json({ error: "INVALID_REPLAY_ORDER_ID" }, 400);
+    if (!/^REPLAY-ORDER-[A-Za-z0-9_-]{1,64}-[1-9][0-9]*$/.test(orderId)) return json({ error: "INVALID_REPLAY_ORDER_ID" }, 400);
     try {
       await dependencies.replay.approveOrder(orderId);
       return json({ approved: true }, 200);
@@ -166,8 +185,13 @@ export async function handleCheckoutApiRequest(request: Request, dependencies: C
 
   try {
     if (path === "/api/claim-sets") {
-      const claimSetHash = await saveClaimSet(dependencies.pool, body);
-      return json({ status: "STORED", claimSetId: (body as { claimSetId: string }).claimSetId, claimSetHash }, 201);
+      const claimSet = parseClaimSetV1(body);
+      let signatureValid = false;
+      try { signatureValid = Boolean(claimSet.buyerSignature) && await dependencies.selection.verifyBuyerSignature(claimSet); }
+      catch { signatureValid = false; }
+      if (!signatureValid) return json({ error: "INVALID_CLAIM_SET_SIGNATURE" }, 400);
+      const claimSetHash = await saveClaimSet(dependencies.pool, claimSet);
+      return json({ status: "STORED", claimSetId: claimSet.claimSetId, claimSetHash }, 201);
     }
     if (path === "/api/selections") {
       const evaluation = await evaluateSelectionAdmission(body, {
@@ -207,9 +231,10 @@ export async function handleCheckoutApiRequest(request: Request, dependencies: C
       if (!("admissionId" in checkout)) throw new Error("INVALID_ADMISSION_EVALUATION");
       return json({ status: "ALLOWED", admissionId: checkout.admissionId, approvalUrl: checkout.approvalUrl }, 200);
     }
-    const result = await completeCheckout(body, {
+    const result = await completeCheckoutWithReplayReconciliation(body, {
       pool: dependencies.pool, gateway: dependencies.gateway, newId: dependencies.selection.newId,
-      ...(dependencies.selection.now ? { now: dependencies.selection.now } : {})
+      ...(dependencies.selection.now ? { now: dependencies.selection.now } : {}),
+      ...(dependencies.replay ? { replay: true } : {})
     });
     const bundle = isClosedCapture(result.state) ? await finalizeClosedAdmission(String((body as { admissionId?: unknown }).admissionId), dependencies) : undefined;
     return json({ state: result.state, ...(result.paypalCaptureId ? { captureId: result.paypalCaptureId } : {}),
@@ -374,6 +399,19 @@ async function finalizeClosedAdmission(admissionId: string, dependencies: Checko
   return dependencies.evidenceBundleSigning
     ? finalizeEvidenceBundle(dependencies.pool, admissionId, dependencies.evidenceBundleSigning)
     : undefined;
+}
+
+async function completeCheckoutWithReplayReconciliation(
+  input: unknown,
+  dependencies: Parameters<typeof completeCheckout>[1] & { replay?: boolean }
+) {
+  const { replay, ...checkoutDependencies } = dependencies;
+  let result = await completeCheckout(input, checkoutDependencies);
+  if (replay && result.state === "CAPTURE_COMPLETED_PENDING_WEBHOOK") {
+    // Replay has no external webhook delivery, so exercise the same GET-first close path deterministically.
+    result = await completeCheckout(input, checkoutDependencies);
+  }
+  return result;
 }
 
 function isClosedCapture(state: string): state is "CLOSED_VERIFIED_WEBHOOK" | "CLOSED_RECONCILED" {

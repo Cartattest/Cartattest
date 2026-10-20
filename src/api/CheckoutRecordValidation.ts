@@ -30,16 +30,21 @@ export function parseAdmissionRecordV1(value: unknown): AdmissionRecordV1 {
 }
 
 export function parseCaptureAttemptV1(value: unknown): CaptureAttemptV1 {
-  if (!isRecord(value) || !hasOnlyKeys(value, captureKeys) || value.schemaVersion !== "capture-attempt-v1" ||
-      !nonempty(value.attemptId) || !nonempty(value.admissionId) || !nonempty(value.paypalOrderId) ||
-      !nonempty(value.materialHash) || !nonempty(value.paypalRequestId) || !captureStates.includes(value.state as CaptureAttemptState) ||
-      !validTime(value.createdAt) || !validTime(value.updatedAt) || Date.parse(value.updatedAt) < Date.parse(value.createdAt) ||
-      (value.paypalCaptureId !== undefined && !nonempty(value.paypalCaptureId)) ||
-      (value.paypalCaptureStatus !== undefined && !captureStatuses.includes(value.paypalCaptureStatus as NonNullable<CaptureAttemptV1["paypalCaptureStatus"]>)) ||
-      !captureStateMatchesStatus(value.state as CaptureAttemptState, value.paypalCaptureStatus)) {
+  const record = isRecord(value) ? { ...value } : value;
+  if (isRecord(record)) {
+    if (record.paypalCaptureId === null) delete record.paypalCaptureId;
+    if (record.paypalCaptureStatus === null) delete record.paypalCaptureStatus;
+  }
+  if (!isRecord(record) || !hasOnlyKeys(record, captureKeys) || record.schemaVersion !== "capture-attempt-v1" ||
+      !nonempty(record.attemptId) || !nonempty(record.admissionId) || !nonempty(record.paypalOrderId) ||
+      !nonempty(record.materialHash) || !nonempty(record.paypalRequestId) || !captureStates.includes(record.state as CaptureAttemptState) ||
+      !validTime(record.createdAt) || !validTime(record.updatedAt) || Date.parse(record.updatedAt) < Date.parse(record.createdAt) ||
+      (record.paypalCaptureId !== undefined && !nonempty(record.paypalCaptureId)) ||
+      (record.paypalCaptureStatus !== undefined && !captureStatuses.includes(record.paypalCaptureStatus as NonNullable<CaptureAttemptV1["paypalCaptureStatus"]>)) ||
+      !captureStateMatchesStatus(record.state as CaptureAttemptState, record.paypalCaptureStatus)) {
     throw new Error("INVALID_CAPTURE_ATTEMPT");
   }
-  return value as unknown as CaptureAttemptV1;
+  return record as unknown as CaptureAttemptV1;
 }
 
 function captureStateMatchesStatus(state: CaptureAttemptState, status: unknown): boolean {

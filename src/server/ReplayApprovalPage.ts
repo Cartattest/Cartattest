@@ -2,7 +2,7 @@ export function handleReplayApprovalPageRequest(request: Request): Response | un
   if (new URL(request.url).pathname !== "/replay/approve") return undefined;
   if (request.method !== "GET") return html("<h1>Method not allowed</h1>", 405, { Allow: "GET" });
   const tokens = new URL(request.url).searchParams.getAll("token");
-  if (tokens.length !== 1 || !/^REPLAY-ORDER-[1-9][0-9]*$/.test(tokens[0]!)) return html("<h1>Invalid replay approval link</h1>", 400);
+  if (tokens.length !== 1 || !/^REPLAY-ORDER-[A-Za-z0-9_-]{1,64}-[1-9][0-9]*$/.test(tokens[0]!)) return html("<h1>Invalid replay approval link</h1>", 400);
   return html(page.replaceAll("__ORDER_ID__", encodeURIComponent(tokens[0]!)), 200);
 }
 

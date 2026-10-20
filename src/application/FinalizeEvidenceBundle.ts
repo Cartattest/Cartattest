@@ -71,7 +71,7 @@ export async function finalizeEvidenceBundle(
         paypalRequestId: admission.paypalRequestId, state: admission.captureState,
         ...(typeof admission.captureId === "string" ? { paypalCaptureId: admission.captureId } : {}),
         ...(typeof admission.captureStatus === "string" ? { paypalCaptureStatus: admission.captureStatus } : {}),
-        createdAt: admission.captureCreatedAt, updatedAt: admission.sealedAt
+        createdAt: isoTime(admission.captureCreatedAt), updatedAt: isoTime(admission.sealedAt)
       } }
     );
     const webhooks = await client.query(
@@ -80,13 +80,15 @@ export async function finalizeEvidenceBundle(
        FROM paypal_webhook_events WHERE paypal_order_id = $1 ORDER BY verified_at, event_id`,
       [admission.paypalOrderId]
     );
-    for (const event of webhooks.rows) events.push({ recordType: "PayPalWebhookVerification", payload: event });
+    for (const event of webhooks.rows) events.push({ recordType: "PayPalWebhookVerification", payload: {
+      ...event, verifiedAt: isoTime(event.verifiedAt)
+    } });
     const bundle = await createEvidenceBundle({
       bundleId: admissionId,
       events,
       seal: {
         closureState: admission.captureState as "CLOSED_VERIFIED_WEBHOOK" | "CLOSED_RECONCILED",
-        sealedAt: admission.sealedAt as string,
+        sealedAt: isoTime(admission.sealedAt),
         orderId: admission.paypalOrderId as string,
         ...(typeof admission.captureId === "string" ? { captureId: admission.captureId } : {})
       },
@@ -112,8 +114,13 @@ function admissionRecord(row: Record<string, unknown>): Record<string, unknown> 
     evidenceManifestVersion: row.evidenceManifestVersion, evidenceSetHashes: row.evidenceSetHashes,
     attestationHashes: row.attestationHashes, overrideHashes: row.overrideHashes, policyVersion: row.policyVersion,
     cartBindingProfile: row.cartBindingProfile, admittedCartBindingHash: row.admittedCartBindingHash,
-    paypalOrderId: row.paypalOrderId, outcome: "ALLOW", createdAt: row.createdAt, expiresAt: row.expiresAt
+    paypalOrderId: row.paypalOrderId, outcome: "ALLOW", createdAt: isoTime(row.createdAt), expiresAt: isoTime(row.expiresAt)
   };
+}
+
+function isoTime(value: unknown): string {
+  if (typeof value !== "string" || !Number.isFinite(Date.parse(value))) throw new Error("ADMISSION_EVIDENCE_SNAPSHOT_INVALID");
+  return new Date(value).toISOString();
 }
 
 function addUnique(events: Array<{ recordType: string; payload: unknown }>, seen: Set<string>, type: string, payload: unknown, id = JSON.stringify(payload)): void {

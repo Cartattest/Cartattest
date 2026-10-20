@@ -10,9 +10,9 @@ const scenario = { approvalRequired: observation.observations.approvalRequired,
   approvedOrderStatus: observation.observations.approvedOrderStatus, captureStatus: observation.observations.captureStatus };
 
 test("replays create, explicit approval, Binding B, and one idempotent capture", async () => {
-  const gateway = new ReplayPayPalGateway(scenario);
+  const gateway = new ReplayPayPalGateway(scenario, "test-session");
   const created = await gateway.createOrder(binding);
-  assert.equal(created.orderId, "REPLAY-ORDER-1");
+  assert.equal(created.orderId, "REPLAY-ORDER-test-session-1");
   assert.equal(created.orderStatus, "CREATED");
   assert.equal(new URL(created.approvalUrl, "https://service.example").pathname, "/replay/approve");
   assertBindingEqual(binding, mapPayPalOrderToBinding(created.raw, binding.shipping.preference));
@@ -28,7 +28,7 @@ test("replays create, explicit approval, Binding B, and one idempotent capture",
 });
 
 test("rejects unknown orders and approval after terminal capture", async () => {
-  const gateway = new ReplayPayPalGateway(scenario);
+  const gateway = new ReplayPayPalGateway(scenario, "test-session");
   await assert.rejects(gateway.getOrder("REPLAY-UNKNOWN"), { message: "PAYPAL_ORDER_NOT_FOUND" });
   const order = await gateway.createOrder(binding);
   await gateway.approveOrder(order.orderId);

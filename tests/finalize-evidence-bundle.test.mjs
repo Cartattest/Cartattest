@@ -16,10 +16,10 @@ const closedAdmission = {
   resolvedCartSnapshotHash: "sha256:cart", evidenceManifestVersion: "none", evidenceSetHashes: [],
   attestationHashes: [], overrideHashes: [], policyVersion: "policy-v1", cartBindingProfile: "v1",
   admittedCartBinding: { items: [] }, admittedCartBindingHash: "sha256:binding", paypalOrderId: "ORDER-1",
-  createdAt: "2026-10-20T12:00:00.000Z", expiresAt: "2026-10-20T12:15:00.000Z", evidenceSnapshot: snapshot,
+  createdAt: "2026-10-20 12:00:00+00", expiresAt: "2026-10-20 12:15:00+00", evidenceSnapshot: snapshot,
   attemptId: "attempt-1", materialHash: "sha256:binding", paypalRequestId: "request-1",
   captureState: "CLOSED_RECONCILED", captureId: "CAPTURE-1", captureStatus: "COMPLETED",
-  captureCreatedAt: "2026-10-20T12:01:00.000Z", sealedAt: "2026-10-20T12:02:00.000Z"
+  captureCreatedAt: "2026-10-20 12:01:00+00", sealedAt: "2026-10-20 12:02:00+00"
 };
 
 test("seals a closed admission once and verifies the signed event chain", async () => {
@@ -28,6 +28,9 @@ test("seals a closed admission once and verifies the signed event chain", async 
   await verifyEvidenceBundle(bundle, signing.trustedKeys);
   assert.equal(bundle.seal.closureState, "CLOSED_RECONCILED");
   assert.equal(bundle.seal.captureId, "CAPTURE-1");
+  assert.equal(bundle.seal.sealedAt, "2026-10-20T12:02:00.000Z");
+  assert.equal(bundle.records.find((record) => record.recordType === "AdmissionRecord").payload.createdAt,
+    "2026-10-20T12:00:00.000Z");
   assert.deepEqual(bundle.records.map((record) => record.recordType), [
     "BuyerClaimSet", "ResolvedSelection", "AdmissionRecord", "BindingA", "PayPalApproval", "BindingB", "CaptureAttempt"
   ]);

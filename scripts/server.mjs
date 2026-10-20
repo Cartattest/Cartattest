@@ -11,7 +11,7 @@ import { createCheckoutHttpServer } from "../dist/server/CheckoutHttpServer.js";
 
 const demoMode = process.env.DEMO_MODE || "sandbox";
 if (!["sandbox", "replay"].includes(demoMode)) throw new Error("DEMO_MODE_INVALID");
-const required = ["DATABASE_URL", "CARTATTEST_BUYER_KEY_ID", "CARTATTEST_BUYER_PUBLIC_KEY_PATH"];
+const required = ["DATABASE_URL"];
 if (demoMode === "sandbox") required.push("PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET", "PAYPAL_RETURN_URL", "PAYPAL_CANCEL_URL");
 for (const name of required) if (!process.env[name]) throw new Error(name + "_REQUIRED");
 if ((process.env.PAYPAL_ENV || "sandbox") === "live") throw new Error("SANDBOX_SERVER_ONLY");
@@ -21,10 +21,12 @@ let payee = process.env.PAYPAL_MERCHANT_ID
     ? { identityType: "EMAIL", identityValue: process.env.PAYPAL_MERCHANT_EMAIL }
     : undefined;
 
-const keyPem = await readFile(process.env.CARTATTEST_BUYER_PUBLIC_KEY_PATH, "utf8");
+const buyerKeyId = process.env.CARTATTEST_BUYER_KEY_ID || "buyer-local-v1";
+const buyerPublicKeyPath = process.env.CARTATTEST_BUYER_PUBLIC_KEY_PATH || ".codex/keys/buyer.public.pem";
+const keyPem = await readFile(buyerPublicKeyPath, "utf8");
 const keyDer = createPublicKey(keyPem).export({ type: "spki", format: "der" });
 const buyerKey = await crypto.subtle.importKey("spki", keyDer, { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]);
-const buyerKeys = new Map([[process.env.CARTATTEST_BUYER_KEY_ID, buyerKey]]);
+const buyerKeys = new Map([[buyerKeyId, buyerKey]]);
 const servicePrivatePath = process.env.CARTATTEST_SERVICE_PRIVATE_KEY_PATH || ".codex/keys/service.private.pem";
 const servicePublicPath = process.env.CARTATTEST_SERVICE_PUBLIC_KEY_PATH || ".codex/keys/service.public.pem";
 let evidenceBundleSigning;
@@ -77,7 +79,7 @@ const replayGateway = replayObservation ? new ReplayPayPalGateway({
   approvalRequired: replayObservation.observations.approvalRequired,
   approvedOrderStatus: replayObservation.observations.approvedOrderStatus,
   captureStatus: replayObservation.observations.captureStatus
-}) : undefined;
+}, String(Date.now())) : undefined;
 const gateway = replayGateway
   ? Object.assign(replayGateway, { verifyWebhookSignature: async () => false })
   : new OrdersV2Gateway({
@@ -92,6 +94,7 @@ const server = createCheckoutHttpServer({
   gateway,
   webhookId: replayGateway ? "" : process.env.PAYPAL_WEBHOOK_ID,
   policyVersion: "policy-v1",
+  buyerKeyId,
   ...(replayGateway ? { replay: replayGateway } : {}),
   ...(evidenceBundleSigning ? { evidenceBundleSigning } : {}),
   selection: {
@@ -134,7 +137,7 @@ const server = createCheckoutHttpServer({
 });
 const port = Number(process.env.PORT || "3000");
 if (!Number.isSafeInteger(port) || port < 1 || port > 65535) throw new Error("PORT_INVALID");
-server.listen(port, "127.0.0.1", () => process.stdout.write("CartAttest Sandbox listening on http://127.0.0.1:" + port + "\n"));
+server.listen(port, "127.0.0.1", () => process.stdout.write(`CartAttest ${demoMode === "replay" ? "Replay" : "Sandbox"} listening on http://127.0.0.1:${port}\n`));
 
 server.on("close", () => pool.end().catch(() => {}));
 process.on("SIGINT", () => server.close());

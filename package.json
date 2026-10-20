@@ -16,7 +16,8 @@
     "gate0": "pnpm build && node --env-file=.env scripts/gate0.mjs",
     "verify:bundle": "pnpm build && node scripts/verify-bundle.mjs",
     "keygen": "node scripts/generate-es256-key.mjs",
-    "start": "pnpm build && node --env-file=.env scripts/server.mjs"
+    "start": "pnpm build && node --env-file=.env scripts/server.mjs",
+    "replay:e2e": "node --env-file=.env scripts/replay-e2e.mjs"
   },
   "devDependencies": {
     "@types/pg": "^8.23.1",

@@ -6,6 +6,7 @@ import { handleCheckoutApiRequest } from "../dist/api/CheckoutApi.js";
 import { sha256 } from "../dist/domain/Hash.js";
 import { hashCartBinding } from "../dist/binding/CartBindingV1.js";
 import { createEvidenceBundle } from "../dist/bundle/EvidenceBundle.js";
+import { verifyClaimSetSignature } from "../dist/security/BuyerSignatures.js";
 
 const claimSet = {
   schemaVersion: "claim-set-v1", claimSetId: "claim-set-1", buyerRequestText: "Waterproof jacket under GBP 100",
@@ -13,22 +14,50 @@ const claimSet = {
     value: true, evidenceProfileId: "waterproof-v1", overridePolicy: "HUMAN_EXACT_SUBJECT" }],
   createdAt: "2026-10-18T12:00:00.000Z", expiresAt: "2026-10-18T12:15:00.000Z"
 };
-const claimSetHash = await sha256(canonicalize(claimSet));
+const buyerPair = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+const buyerKeys = new Map([["buyer-ui-test", buyerPair.publicKey]]);
+const signedClaimSet = { ...claimSet, buyerSignature: await sign(claimSet) };
+const claimSetHash = await sha256(canonicalize(signedClaimSet));
 
 test("stores a validated Claim Set through the public API", async () => {
   const calls = [];
-  const response = await handleCheckoutApiRequest(post("/api/claim-sets", claimSet), dependencies(fakePool(calls, (sql) => {
+  const deps = dependencies(fakePool(calls, (sql) => {
     if (sql.startsWith("INSERT INTO claim_sets")) return { rows: [{ claimSetHash }] };
     return { rows: [], rowCount: 1 };
-  })));
+  }));
+  deps.selection.verifyBuyerSignature = async (value) => verifyClaimSetSignature(value, buyerKeys);
+  const response = await handleCheckoutApiRequest(post("/api/claim-sets", signedClaimSet), deps);
   assert.equal(response.status, 201);
-  assert.deepEqual(await response.json(), { status: "STORED", claimSetId: "claim-set-1", claimSetHash });
+  assert.deepEqual(await response.json(), { status: "STORED", claimSetId: signedClaimSet.claimSetId, claimSetHash });
+});
+
+test("refuses to store a Claim Set until its buyer signature is valid", async () => {
+  const calls = [];
+  const deps = dependencies(fakePool(calls, () => ({ rows: [], rowCount: 1 })));
+  deps.selection.verifyBuyerSignature = async () => false;
+  const response = await handleCheckoutApiRequest(post("/api/claim-sets", claimSet), deps);
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), { error: "INVALID_CLAIM_SET_SIGNATURE" });
+  assert.equal(calls.some((call) => call.sql.startsWith("INSERT INTO claim_sets")), false);
+});
+
+test("prepares a canonical, unsigned Claim Set for browser-side buyer review without persisting it", async () => {
+  const calls = [];
+  const deps = dependencies(fakePool(calls, () => { assert.fail("prepare must not persist"); }));
+  deps.buyerKeyId = "buyer-ui-test";
+  const response = await handleCheckoutApiRequest(post("/api/claim-sets/prepare", claimSet), deps);
+  const body = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(body.buyerKeyId, "buyer-ui-test");
+  assert.deepEqual(body.claimSet, claimSet);
+  assert.equal(body.signingPayload, canonicalize(claimSet));
+  assert.equal(calls.length, 0);
 });
 
 test("blocks an invalid buyer signature before merchant or PayPal access", async () => {
   const calls = [];
   const deps = dependencies(fakePool(calls, (sql) => sql.startsWith("SELECT payload,")
-    ? { rows: [{ payload: claimSet, claimSetHash }] } : { rows: [], rowCount: 1 }));
+    ? { rows: [{ payload: signedClaimSet, claimSetHash }] } : { rows: [], rowCount: 1 }));
   deps.selection.verifyBuyerSignature = async () => false;
   deps.selection.merchant = { async resolveSelection() { assert.fail("invalid signatures stop before merchant resolution"); }, async fetchEvidence() { return []; } };
   const response = await handleCheckoutApiRequest(post("/api/selections", {
@@ -127,12 +156,12 @@ test("accepts approval only through the explicitly enabled replay gateway", asyn
   let approved;
   const deps = dependencies({ async connect() { assert.fail("replay approval does not use persistence"); } });
   deps.replay = { async approveOrder(orderId) { approved = orderId; } };
-  const response = await handleCheckoutApiRequest(new Request("https://service.example/api/replay/orders/REPLAY-ORDER-1/approve", { method: "POST" }), deps);
+  const response = await handleCheckoutApiRequest(new Request("https://service.example/api/replay/orders/REPLAY-ORDER-test-session-1/approve", { method: "POST" }), deps);
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { approved: true });
-  assert.equal(approved, "REPLAY-ORDER-1");
+  assert.equal(approved, "REPLAY-ORDER-test-session-1");
   const disabled = dependencies({ async connect() { assert.fail("disabled replay must not use persistence"); } });
-  assert.equal((await handleCheckoutApiRequest(new Request("https://service.example/api/replay/orders/REPLAY-ORDER-1/approve", { method: "POST" }), disabled)).status, 404);
+  assert.equal((await handleCheckoutApiRequest(new Request("https://service.example/api/replay/orders/REPLAY-ORDER-test-session-1/approve", { method: "POST" }), disabled)).status, 404);
 });
 
 test("serves only the frozen buyer-facing context from an unconsumed STEP-UP session", async () => {
@@ -264,6 +293,12 @@ function post(path, body) {
   return new Request(`https://service.example${path}`, {
     method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body)
   });
+}
+
+async function sign(payload) {
+  const message = new TextEncoder().encode(canonicalize(payload));
+  const signature = new Uint8Array(await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, buyerPair.privateKey, message));
+  return { alg: "ES256", keyId: "buyer-ui-test", signatureB64: Buffer.from(signature).toString("base64") };
 }
 
 function dependencies(pool) {

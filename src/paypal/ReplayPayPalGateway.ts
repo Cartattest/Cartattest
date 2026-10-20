@@ -18,14 +18,15 @@ export class ReplayPayPalGateway implements PayPalGateway {
   private readonly orders = new Map<string, ReplayOrder>();
   private nextOrder = 1;
 
-  constructor(private readonly scenario: ReplayPayPalScenario) {
+  constructor(private readonly scenario: ReplayPayPalScenario, private readonly sessionId = String(Date.now())) {
     if (scenario.approvalRequired !== true || scenario.approvedOrderStatus !== "APPROVED" || scenario.captureStatus !== "COMPLETED") {
       throw new Error("REPLAY_SCENARIO_UNSUPPORTED");
     }
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(sessionId)) throw new Error("REPLAY_SESSION_ID_INVALID");
   }
 
   async createOrder(binding: CartBindingV1): Promise<PayPalOrderSnapshot> {
-    const orderId = `REPLAY-ORDER-${this.nextOrder++}`;
+    const orderId = `REPLAY-ORDER-${this.sessionId}-${this.nextOrder++}`;
     const order: ReplayOrder = { binding: structuredClone(binding), status: "CREATED" };
     this.orders.set(orderId, order);
     return {
