@@ -10,6 +10,10 @@ test("serves the checkout Fetch API over a local HTTP listener", async () => {
     const response = await fetch(`http://127.0.0.1:${address.port}/api/missing`);
     assert.equal(response.status, 404);
     assert.deepEqual(await response.json(), { error: "NOT_FOUND" });
+    const review = await fetch("http://127.0.0.1:" + address.port + "/step-up/session-1");
+    assert.equal(review.status, 200);
+    assert.match(review.headers.get("content-type"), /text\/html/);
+    assert.match(await review.text(), /Your purchase guarantee|Review this purchase/);
   } finally {
     await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }

@@ -124,6 +124,38 @@ test("serves only the frozen buyer-facing context from an unconsumed STEP-UP ses
   assert.equal("claimEvaluations" in body, false);
 });
 
+test("returns a canonical, subject-bound signing payload for an allowed exact exception", async () => {
+  const claimSetHash = "sha256:" + "1".repeat(64);
+  const subjectHash = "sha256:" + "2".repeat(64);
+  const evidenceSetHash = "sha256:" + "3".repeat(64);
+  const attestationHash = "sha256:" + "4".repeat(64);
+  const context = {
+    schemaVersion: "step-up-context-v1", claimIds: ["claim-1"], expiresAt: "2026-10-18T12:10:00.000Z",
+    claimSet: { buyerSignature: { keyId: "buyer-key" } }, claimSetHash,
+    resolvedSelection: { subjectRef: "jacket-1", subjectHash, cartBinding: { currency: "GBP",
+      amountBreakdown: { total: "82.50" }, items: [{ name: "RainShell", sku: "RS-1" }] } },
+    claimEvaluations: [{ claim: { claimId: "claim-1", humanText: "Waterproof", value: true, overridePolicy: "HUMAN_EXACT_SUBJECT" },
+      claimSetHash, subjectRef: "jacket-1", subjectHash, evidenceSetHash, attestationHash,
+      evidence: [{ sourceClass: "MERCHANT_TECHNICAL_SPEC", origin: "fixture://merchant", fieldLocator: "spec", retrievedAt: "2026-10-18T12:00:00.000Z", modelView: "Water resistant." }] }],
+    admissionEvidence: { evidenceManifestVersion: "waterproof-v1", evidenceSetHashes: [evidenceSetHash],
+      attestationHashes: [attestationHash], overrideHashes: [] }
+  };
+  const contextHash = await sha256(canonicalize(context));
+  const deps = dependencies({ async connect() { return {
+    async query() { return { rows: [{ context, contextHash }] }; }, release() {}
+  }; } });
+  const response = await handleCheckoutApiRequest(new Request("https://service.example/api/step-ups/session-1"), deps);
+  const body = await response.json();
+  const payload = JSON.parse(body.claims[0].overrideSigningPayload);
+  assert.equal(response.status, 200);
+  assert.equal(body.claims[0].exceptionAllowed, true);
+  assert.equal(body.claims[0].buyerKeyId, "buyer-key");
+  assert.deepEqual(payload, {
+    schemaVersion: "buyer-override-v1", overrideId: "id-1", claimSetHash, claimId: "claim-1", subjectRef: "jacket-1",
+    subjectHash, evidenceSetHash, attestationHash, decision: "ACCEPT_EXCEPTION", expiresAt: context.expiresAt, nonce: "id-1"
+  });
+});
+
 test("stores STEP-UP before returning a buyer-only decision URL", async () => {
   const binding = JSON.parse(await readFile(new URL("../fixtures/paypal/gate0-binding.example.json", import.meta.url), "utf8"));
   const signedClaimSet = { ...claimSet, buyerSignature: { alg: "ES256", keyId: "buyer-1", signatureB64: "signature" } };

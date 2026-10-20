@@ -1,6 +1,7 @@
 import { createServer, type Server } from "node:http";
 import { Readable } from "node:stream";
 import { handleCheckoutApiRequest, type CheckoutApiDependencies } from "../api/CheckoutApi.js";
+import { handleStepUpPageRequest } from "./StepUpPage.js";
 
 export function createCheckoutHttpServer(dependencies: CheckoutApiDependencies): Server {
   return createServer(async (incoming, outgoing) => {
@@ -19,7 +20,7 @@ export function createCheckoutHttpServer(dependencies: CheckoutApiDependencies):
           duplex: "half"
         } : {})
       });
-      const response = await handleCheckoutApiRequest(request, dependencies);
+      const response = handleStepUpPageRequest(request) ?? await handleCheckoutApiRequest(request, dependencies);
       response.headers.forEach((value, name) => outgoing.setHeader(name, value));
       outgoing.writeHead(response.status);
       outgoing.end(method === "HEAD" ? undefined : Buffer.from(await response.arrayBuffer()));

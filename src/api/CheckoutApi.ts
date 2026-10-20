@@ -12,6 +12,7 @@ import { consumeStepUpSession, loadStepUpSession, saveStepUpSession } from "../p
 import { parseBuyerOverrideV1 } from "./BuyerOverrideValidation.js";
 import { evaluateStepUpDecision, type StepUpContextV1 } from "../application/StepUpDecisionService.js";
 import type { BuyerOverrideV1 } from "../domain/types.js";
+import canonicalize from "canonicalize";
 
 const maxRequestBytes = 128_000;
 
@@ -187,7 +188,7 @@ async function handleStepUpRequest(
     return json({ error: "STEP_UP_SESSION_FAILED" }, 500);
   }
 
-  if (request.method === "GET") return json(stepUpView(context), 200);
+  if (request.method === "GET") return json(stepUpView(context, dependencies.selection.newId), 200);
   if (request.method !== "POST") return json({ error: "METHOD_NOT_ALLOWED" }, 405, { Allow: "GET, POST" });
   if (!/^application\/json(?:\s*;|$)/i.test(request.headers.get("content-type") ?? "")) {
     return json({ error: "UNSUPPORTED_MEDIA_TYPE" }, 415);
@@ -242,21 +243,41 @@ async function handleStepUpRequest(
   }
 }
 
-function stepUpView(context: StepUpContextV1): unknown {
+function stepUpView(context: StepUpContextV1, newId: () => string): unknown {
   const item = context.resolvedSelection.cartBinding.items[0];
   return {
     expiresAt: context.expiresAt,
+    buyerKeyId: context.claimSet.buyerSignature?.keyId,
     subject: {
       subjectRef: context.resolvedSelection.subjectRef,
-      ...(item ? { name: item.name, sku: item.sku } : {})
+      ...(item ? { name: item.name, sku: item.sku } : {}),
+      ...(context.resolvedSelection.cartBinding.amountBreakdown?.total
+        ? { total: context.resolvedSelection.cartBinding.amountBreakdown.total, currency: context.resolvedSelection.cartBinding.currency }
+        : {})
     },
     claims: context.claimIds.map((claimId) => {
       const evaluation = context.claimEvaluations.find((candidate) => candidate.claim.claimId === claimId)!;
+      const exceptionAllowed = evaluation.claim.overridePolicy === "HUMAN_EXACT_SUBJECT" && Boolean(evaluation.attestationHash);
+      const overridePayload = exceptionAllowed && context.claimSet.buyerSignature ? {
+        schemaVersion: "buyer-override-v1",
+        overrideId: newId(),
+        claimSetHash: evaluation.claimSetHash,
+        claimId,
+        subjectRef: context.resolvedSelection.subjectRef,
+        subjectHash: evaluation.subjectHash,
+        evidenceSetHash: evaluation.evidenceSetHash,
+        attestationHash: evaluation.attestationHash!,
+        decision: "ACCEPT_EXCEPTION",
+        expiresAt: context.expiresAt,
+        nonce: newId()
+      } : undefined;
+      const signingPayload = overridePayload ? canonicalize(overridePayload) : undefined;
       return {
         claimId,
         text: evaluation.claim.humanText,
         value: evaluation.claim.value,
-        exceptionAllowed: evaluation.claim.overridePolicy === "HUMAN_EXACT_SUBJECT" && Boolean(evaluation.attestationHash),
+        exceptionAllowed: exceptionAllowed && Boolean(signingPayload),
+        ...(signingPayload ? { overrideSigningPayload: signingPayload, buyerKeyId: context.claimSet.buyerSignature!.keyId } : {}),
         claimSetHash: evaluation.claimSetHash,
         subjectHash: evaluation.subjectHash,
         evidenceSetHash: evaluation.evidenceSetHash,
