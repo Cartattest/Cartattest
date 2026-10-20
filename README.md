@@ -49,7 +49,7 @@ pnpm gate0 -- capture PAYPAL_ORDER_ID PERSISTED_REQUEST_ID
 pnpm gate0 -- patch PAYPAL_ORDER_ID path/to/patch.json
 ```
 
-`pnpm migrate` applies the versioned checkout schema. Gate 0 uses PayPal Sandbox only. Review JSON Patch files before applying them because they mutate the named sandbox order. Record observations only after running the exact test against a sandbox account; the current Gate 0 summary remains unrun.
+`pnpm migrate` applies the versioned checkout schema. Set `DEMO_MODE=replay` in `.env` for a local deterministic checkout with a labeled simulated approval; it does not contact PayPal or move money. Set `DEMO_MODE=sandbox` for real Sandbox checkout. Review patch files before applying because they mutate the named sandbox order. Record observations only after running the exact test against a sandbox account; Gate 0 remains in progress.
 
 ## Security boundary
 

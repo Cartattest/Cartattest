@@ -24,8 +24,8 @@ Keep secrets in `.env`; it is gitignored. Never paste credentials into source, c
 | `PAYPAL_MERCHANT_ID` or `PAYPAL_MERCHANT_EMAIL` | Sandbox business account that receives the order. | Set exactly one to the seller account value; buyer credentials are not the payee. |
 | `CARTATTEST_BUYER_KEY_ID`, `CARTATTEST_BUYER_PUBLIC_KEY_PATH` | Trusted buyer signing key for ClaimSets and exact overrides. | Generate a local pair with `pnpm keygen buyer-local .codex/keys/buyer`; keep the private key local. |
 | `ATTESTOR_PROVIDER`, `ATTESTOR_MODEL_ID`, `ATTESTOR_API_KEY` | Provider, exact model, and provider key for semantic claims. | No provider adapter is wired. Freeze evaluation inputs before selecting/tuning the model or creating a key. |
-| `CARTATTEST_SERVICE_SIGNING_KEY`, `CARTATTEST_SERVICE_KEY_ID` | Service key for signed evidence bundles. | Bundle creation and verification primitives exist; automatic checkout bundle assembly remains in development. |
-| `DEMO_MODE` | Intended replay or live runtime. | The local server is PayPal Sandbox backed. Replay mode is not implemented yet. |
+| `CARTATTEST_SERVICE_PRIVATE_KEY_PATH`, `CARTATTEST_SERVICE_PUBLIC_KEY_PATH`, `CARTATTEST_SERVICE_KEY_ID` | Service key for signed evidence bundles. | Local defaults point into ignored `.codex/keys`; generate the pair with `pnpm keygen service-local-v1 .codex/keys/service`. |
+| `DEMO_MODE` | `sandbox` or deterministic `replay`. | Defaults to Sandbox. Replay uses the recorded G0-01 approval/capture statuses with synthetic local order data; it never contacts PayPal or moves money. |
 
 ## Database
 
@@ -39,12 +39,14 @@ The migration command applies `db/0001_checkout.sql` transactionally and records
 
 ## Local sandbox server
 
-Generate a buyer key and set `CARTATTEST_BUYER_KEY_ID` and `CARTATTEST_BUYER_PUBLIC_KEY_PATH` in `.env`. Keep the matching `.private.pem` file local; never commit or upload it. Configure the PayPal Sandbox app credentials, seller payee, and public HTTPS return/cancel URLs, then run:
+Generate a buyer key and set `CARTATTEST_BUYER_KEY_ID` and `CARTATTEST_BUYER_PUBLIC_KEY_PATH` in `.env`. Keep the matching `.private.pem` file local; never commit or upload it. Generate the service receipt key as described above. Configure the PayPal Sandbox app credentials, seller payee, and public HTTPS return/cancel URLs, then run:
 
     pnpm migrate
     pnpm start
 
 The local server binds to 127.0.0.1 and rejects `PAYPAL_ENV=live`. Until an attestor provider is selected after the evaluation freeze, semantic claims return UNPROVEN; deterministic claims can use the PayPal Sandbox checkout rails.
+
+For a no-PayPal replay, set `DEMO_MODE=replay` and run `pnpm start`. The replay screen labels approval as simulated, then the same Binding B, capture persistence, and receipt path run against a deterministic in-memory gateway. This checks local product flow, not PayPal Sandbox behavior. Replay still requires PostgreSQL and the buyer signing public key.
 
 ## PayPal Sandbox characterization
 
@@ -68,4 +70,4 @@ The product/security owner must freeze and retain the private holdout before any
 
 ## Current implementation state
 
-The repository provides a runnable PayPal Sandbox HTTP server composition, domain/policy/evidence modules, PostgreSQL persistence, capture reconciliation, webhook verification, buyer signature checks, and an offline bundle verifier. The buyer-facing Claim Set, STEP-UP, and receipt pages plus automatic checkout bundle assembly are still under development. Unit tests do not replace live PostgreSQL, PayPal Sandbox, or browser end-to-end characterization.
+The repository provides a runnable PayPal Sandbox or deterministic replay HTTP server, domain/policy/evidence modules, PostgreSQL persistence, capture reconciliation, webhook verification, buyer signature checks, an offline bundle verifier, and Claim Set, STEP-UP, replay approval, and receipt pages. Unit tests do not replace live PostgreSQL, PayPal Sandbox, or browser end-to-end characterization.

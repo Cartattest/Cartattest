@@ -123,6 +123,18 @@ test("reports webhook setup as unavailable until the PayPal webhook ID is config
   assert.deepEqual(await response.json(), { error: "PAYPAL_WEBHOOK_NOT_CONFIGURED" });
 });
 
+test("accepts approval only through the explicitly enabled replay gateway", async () => {
+  let approved;
+  const deps = dependencies({ async connect() { assert.fail("replay approval does not use persistence"); } });
+  deps.replay = { async approveOrder(orderId) { approved = orderId; } };
+  const response = await handleCheckoutApiRequest(new Request("https://service.example/api/replay/orders/REPLAY-ORDER-1/approve", { method: "POST" }), deps);
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { approved: true });
+  assert.equal(approved, "REPLAY-ORDER-1");
+  const disabled = dependencies({ async connect() { assert.fail("disabled replay must not use persistence"); } });
+  assert.equal((await handleCheckoutApiRequest(new Request("https://service.example/api/replay/orders/REPLAY-ORDER-1/approve", { method: "POST" }), disabled)).status, 404);
+});
+
 test("serves only the frozen buyer-facing context from an unconsumed STEP-UP session", async () => {
   const context = {
     schemaVersion: "step-up-context-v1", claimIds: ["waterproof"], expiresAt: "2026-10-18T12:10:00.000Z",

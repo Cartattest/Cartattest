@@ -2,23 +2,24 @@ import { readFile } from "node:fs/promises";
 import { createPrivateKey, createPublicKey } from "node:crypto";
 import { FixtureMerchantAdapter } from "../dist/merchant/FixtureMerchantAdapter.js";
 import { OrdersV2Gateway } from "../dist/paypal/OrdersV2Gateway.js";
+import { ReplayPayPalGateway } from "../dist/paypal/ReplayPayPalGateway.js";
 import { createPostgresSqlPool } from "../dist/persistence/PostgresSqlPool.js";
 import { verifyBuyerOverrideSignature, verifyClaimSetSignature } from "../dist/security/BuyerSignatures.js";
 import { sha256 } from "../dist/domain/Hash.js";
 import { hashEvidenceSet } from "../dist/bundle/EvidenceSet.js";
 import { createCheckoutHttpServer } from "../dist/server/CheckoutHttpServer.js";
 
-const required = ["DATABASE_URL", "PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET", "PAYPAL_RETURN_URL", "PAYPAL_CANCEL_URL",
-  "CARTATTEST_BUYER_KEY_ID",
-  "CARTATTEST_BUYER_PUBLIC_KEY_PATH"];
+const demoMode = process.env.DEMO_MODE || "sandbox";
+if (!["sandbox", "replay"].includes(demoMode)) throw new Error("DEMO_MODE_INVALID");
+const required = ["DATABASE_URL", "CARTATTEST_BUYER_KEY_ID", "CARTATTEST_BUYER_PUBLIC_KEY_PATH"];
+if (demoMode === "sandbox") required.push("PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET", "PAYPAL_RETURN_URL", "PAYPAL_CANCEL_URL");
 for (const name of required) if (!process.env[name]) throw new Error(name + "_REQUIRED");
-if ((process.env.PAYPAL_ENV || "sandbox") !== "sandbox") throw new Error("SANDBOX_SERVER_ONLY");
-const payee = process.env.PAYPAL_MERCHANT_ID
+if ((process.env.PAYPAL_ENV || "sandbox") === "live") throw new Error("SANDBOX_SERVER_ONLY");
+let payee = process.env.PAYPAL_MERCHANT_ID
   ? { identityType: "MERCHANT_ID", identityValue: process.env.PAYPAL_MERCHANT_ID }
   : process.env.PAYPAL_MERCHANT_EMAIL
     ? { identityType: "EMAIL", identityValue: process.env.PAYPAL_MERCHANT_EMAIL }
     : undefined;
-if (!payee) throw new Error("PAYPAL_MERCHANT_ID_OR_EMAIL_REQUIRED");
 
 const keyPem = await readFile(process.env.CARTATTEST_BUYER_PUBLIC_KEY_PATH, "utf8");
 const keyDer = createPublicKey(keyPem).export({ type: "spki", format: "der" });
@@ -43,6 +44,8 @@ const [catalogue, manifestFile] = await Promise.all([
   readJson(new URL("../fixtures/merchant/catalogue.json", import.meta.url)),
   readJson(new URL("../fixtures/merchant/evidence-manifests.json", import.meta.url))
 ]);
+if (!payee && demoMode === "replay") payee = catalogue.merchant.payee;
+if (!payee) throw new Error("PAYPAL_MERCHANT_ID_OR_EMAIL_REQUIRED");
 catalogue.merchant.payee = payee;
 const merchant = new FixtureMerchantAdapter(catalogue);
 const manifests = new Map(manifestFile.profiles.map((value) => {
@@ -63,18 +66,33 @@ const manifests = new Map(manifestFile.profiles.map((value) => {
 
 const disabledHash = await sha256("cartattest-disabled-attestor-v1");
 const pool = createPostgresSqlPool(process.env.DATABASE_URL);
-const gateway = new OrdersV2Gateway({
-  clientId: process.env.PAYPAL_CLIENT_ID,
-  clientSecret: process.env.PAYPAL_CLIENT_SECRET,
-  environment: "sandbox",
-  returnUrl: process.env.PAYPAL_RETURN_URL,
-  cancelUrl: process.env.PAYPAL_CANCEL_URL
-});
+const replayObservation = demoMode === "replay"
+  ? await readJson(new URL("../fixtures/paypal/sanitized/g0-01-approved-capture.json", import.meta.url))
+  : undefined;
+if (replayObservation && (replayObservation.observations?.approvalRequired !== true ||
+    replayObservation.observations?.approvedOrderStatus !== "APPROVED" || replayObservation.observations?.captureStatus !== "COMPLETED")) {
+  throw new Error("REPLAY_FIXTURE_INVALID");
+}
+const replayGateway = replayObservation ? new ReplayPayPalGateway({
+  approvalRequired: replayObservation.observations.approvalRequired,
+  approvedOrderStatus: replayObservation.observations.approvedOrderStatus,
+  captureStatus: replayObservation.observations.captureStatus
+}) : undefined;
+const gateway = replayGateway
+  ? Object.assign(replayGateway, { verifyWebhookSignature: async () => false })
+  : new OrdersV2Gateway({
+    clientId: process.env.PAYPAL_CLIENT_ID,
+    clientSecret: process.env.PAYPAL_CLIENT_SECRET,
+    environment: "sandbox",
+    returnUrl: process.env.PAYPAL_RETURN_URL,
+    cancelUrl: process.env.PAYPAL_CANCEL_URL
+  });
 const server = createCheckoutHttpServer({
   pool,
   gateway,
-  webhookId: process.env.PAYPAL_WEBHOOK_ID,
+  webhookId: replayGateway ? "" : process.env.PAYPAL_WEBHOOK_ID,
   policyVersion: "policy-v1",
+  ...(replayGateway ? { replay: replayGateway } : {}),
   ...(evidenceBundleSigning ? { evidenceBundleSigning } : {}),
   selection: {
     verifyBuyerSignature: (claimSet) => verifyClaimSetSignature(claimSet, buyerKeys),

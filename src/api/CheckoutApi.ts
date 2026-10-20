@@ -25,6 +25,7 @@ export interface CheckoutApiDependencies {
   webhookId: string;
   policyVersion: string;
   evidenceBundleSigning?: EvidenceBundleSigningConfig;
+  replay?: { approveOrder(orderId: string): Promise<void> };
 }
 
 export async function handleCheckoutApiRequest(request: Request, dependencies: CheckoutApiDependencies): Promise<Response> {
@@ -90,6 +91,24 @@ export async function handleCheckoutApiRequest(request: Request, dependencies: C
       } } : {}),
       ...(dependencies.selection.now ? { now: dependencies.selection.now } : {})
     });
+  }
+  const replayApproval = /^\/api\/replay\/orders\/([^/]+)\/approve$/.exec(path);
+  if (replayApproval) {
+    if (request.method !== "POST") return json({ error: "METHOD_NOT_ALLOWED" }, 405, { Allow: "POST" });
+    if (!dependencies.replay) return json({ error: "REPLAY_MODE_DISABLED" }, 404);
+    let orderId: string;
+    try { orderId = decodeURIComponent(replayApproval[1]!); }
+    catch { return json({ error: "INVALID_REPLAY_ORDER_ID" }, 400); }
+    if (!/^REPLAY-ORDER-[1-9][0-9]*$/.test(orderId)) return json({ error: "INVALID_REPLAY_ORDER_ID" }, 400);
+    try {
+      await dependencies.replay.approveOrder(orderId);
+      return json({ approved: true }, 200);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "REPLAY_APPROVAL_FAILED";
+      if (message === "PAYPAL_ORDER_NOT_FOUND") return json({ error: message }, 404);
+      if (message === "PAYPAL_ORDER_NOT_APPROVABLE") return json({ error: message }, 409);
+      return json({ error: "REPLAY_APPROVAL_FAILED" }, 500);
+    }
   }
   const receiptMatch = /^\/api\/receipts\/([^/]+)$/.exec(path);
   if (receiptMatch) {

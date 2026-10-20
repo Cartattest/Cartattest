@@ -7,10 +7,22 @@ interface ReplayOrder {
   capture?: CaptureResult;
 }
 
+export interface ReplayPayPalScenario {
+  approvalRequired: true;
+  approvedOrderStatus: "APPROVED";
+  captureStatus: "COMPLETED";
+}
+
 /** Deterministic local PayPal stand-in; it never makes network requests or asserts live observations. */
 export class ReplayPayPalGateway implements PayPalGateway {
   private readonly orders = new Map<string, ReplayOrder>();
   private nextOrder = 1;
+
+  constructor(private readonly scenario: ReplayPayPalScenario) {
+    if (scenario.approvalRequired !== true || scenario.approvedOrderStatus !== "APPROVED" || scenario.captureStatus !== "COMPLETED") {
+      throw new Error("REPLAY_SCENARIO_UNSUPPORTED");
+    }
+  }
 
   async createOrder(binding: CartBindingV1): Promise<PayPalOrderSnapshot> {
     const orderId = `REPLAY-ORDER-${this.nextOrder++}`;
@@ -45,12 +57,12 @@ export class ReplayPayPalGateway implements PayPalGateway {
       if (order.capture.raw && isRecord(order.capture.raw) && order.capture.raw.paypalRequestId === paypalRequestId) return structuredClone(order.capture);
       throw new Error("PAYPAL_DUPLICATE_CAPTURE");
     }
-    if (order.status !== "APPROVED") throw new Error("PAYPAL_ORDER_NOT_APPROVED");
+    if (!this.scenario.approvalRequired || order.status !== this.scenario.approvedOrderStatus) throw new Error("PAYPAL_ORDER_NOT_APPROVED");
     const captureId = `${orderId}-CAPTURE-1`;
-    order.status = "COMPLETED";
+    order.status = this.scenario.captureStatus;
     order.capture = {
-      httpStatus: 201, orderId, captureId, captureStatus: "COMPLETED",
-      raw: { id: captureId, status: "COMPLETED", paypalRequestId }
+      httpStatus: 201, orderId, captureId, captureStatus: this.scenario.captureStatus,
+      raw: { id: captureId, status: this.scenario.captureStatus, paypalRequestId }
     };
     return structuredClone(order.capture);
   }
