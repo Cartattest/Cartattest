@@ -61,6 +61,21 @@ pnpm eval:report -- fixtures/evaluation/dev-scenarios.jsonl fixtures/evaluation/
 
 Shopping-agent selection requests accept identifiers only. Price, terms, evidence, source authority, buyer decisions, PayPal order IDs and payment operations are resolved or controlled by the server. PayPal credentials and checkout operations stay server-side.
 
+## Threat model and limits
+
+The prototype assumes the shopping agent may misread product evidence or propose a selection that violates the buyer's Claim Set. CartAttest independently resolves the selected item and merchant evidence, applies source-authority policy, then binds the admitted cart to the PayPal order before capture. It does not prove that merchant statements are true, protect against a malicious merchant or operator controlling the evidence source, or provide an atomic PayPal compare-and-swap between the final order read and capture. The buyer decision page also assumes the shopping agent cannot automate that trusted origin.
+
+## Prior art and contribution
+
+PayPal approval and request idempotency govern payment authorization and duplicate requests. Signed receipts and generic admission gates can record or gate a transaction. CartAttest's prototype contribution is to evaluate source-typed merchant evidence against buyer-approved semantic constraints before order creation, then bind that admitted commerce object through execution. The evaluation should be read as a test of this composition, not a claim that any single component is new.
+
+## Questions this prototype does not settle
+
+- It cannot establish that a merchant's product claim is physically true; it can only show which supplied source supports or contradicts it.
+- It does not replace the buyer's PayPal approval or guarantee PayPal will reject every order mutation.
+- Its merchant catalogue is a development fixture, not a production connector or independent provenance authority.
+- Its hidden holdout and exact model configuration are still owner-controlled release prerequisites.
+
 ## Development evaluation
 
 `fixtures/evaluation/` contains 20 synthetic matched pairs (40 cases) across the eight defined attack families. The report command checks pair and template coverage, validates one saved input per case, and scores supplied A/B/C and fail-closed reference run records. It reports unsafe ALLOWs, unnecessary STEP-UPs, instability, errors, and latency percentiles. Raw traces from the private run file are not copied into the report. The script scores runs; it does not call a model or create an evaluation lock. Do not use it for the owner-held holdout.
