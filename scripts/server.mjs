@@ -92,6 +92,7 @@ const gateway = replayGateway
 const server = createCheckoutHttpServer({
   pool,
   gateway,
+  loadEvaluationReport: () => readJson(new URL("../.codex/evaluation/dev-report.json", import.meta.url)),
   webhookId: replayGateway ? "" : process.env.PAYPAL_WEBHOOK_ID,
   policyVersion: "policy-v1",
   buyerKeyId,

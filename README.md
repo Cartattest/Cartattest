@@ -46,11 +46,13 @@ pnpm test
 pnpm migrate
 DEMO_MODE=sandbox pnpm start
 DEMO_MODE=replay pnpm start
+# Then visit http://127.0.0.1:3000/evaluation for the evaluation view.
 pnpm replay:e2e             # while replay server is running
 pnpm gate0 -- create path/to/cart-binding.json
 pnpm gate0 -- get PAYPAL_ORDER_ID
 pnpm gate0 -- capture PAYPAL_ORDER_ID PERSISTED_REQUEST_ID
 pnpm gate0 -- patch PAYPAL_ORDER_ID path/to/patch.json
+pnpm eval:report -- fixtures/evaluation/dev-scenarios.jsonl fixtures/evaluation/dev-inputs.jsonl .codex/evaluation/dev-runs.jsonl .codex/evaluation/dev-report.json
 ```
 
 `pnpm migrate` applies the versioned checkout schema. Set `DEMO_MODE=replay` in `.env` for a local deterministic checkout with a labeled simulated approval; it does not contact PayPal or move money. Set `DEMO_MODE=sandbox` for real Sandbox checkout. Review patch files before applying because they mutate the named sandbox order. Record observations only after running the exact test against a sandbox account; Gate 0 remains in progress.
@@ -58,3 +60,9 @@ pnpm gate0 -- patch PAYPAL_ORDER_ID path/to/patch.json
 ## Security boundary
 
 Shopping-agent selection requests accept identifiers only. Price, terms, evidence, source authority, buyer decisions, PayPal order IDs and payment operations are resolved or controlled by the server. PayPal credentials and checkout operations stay server-side.
+
+## Development evaluation
+
+`fixtures/evaluation/` contains 20 synthetic matched pairs (40 cases) across the eight defined attack families. The report command checks pair and template coverage, validates one saved input per case, and scores supplied A/B/C and fail-closed reference run records. It reports unsafe ALLOWs, unnecessary STEP-UPs, instability, errors, and latency percentiles. Raw traces from the private run file are not copied into the report. The script scores runs; it does not call a model or create an evaluation lock. Do not use it for the owner-held holdout.
+
+After a report is generated at `.codex/evaluation/dev-report.json`, the local server serves the compact results view at `/evaluation`. The API exposes only the aggregate development metrics needed by that page.

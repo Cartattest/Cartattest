@@ -5,6 +5,7 @@ import { handleStepUpPageRequest } from "./StepUpPage.js";
 import { handleReceiptPageRequest } from "./ReceiptPage.js";
 import { handleReplayApprovalPageRequest } from "./ReplayApprovalPage.js";
 import { handleClaimSetReviewPageRequest } from "./ClaimSetReviewPage.js";
+import { handleEvaluationPageRequest } from "./EvaluationPage.js";
 
 export function createCheckoutHttpServer(dependencies: CheckoutApiDependencies): Server {
   return createServer(async (incoming, outgoing) => {
@@ -24,7 +25,8 @@ export function createCheckoutHttpServer(dependencies: CheckoutApiDependencies):
         } : {})
       });
       const response = handleStepUpPageRequest(request) ?? handleReceiptPageRequest(request) ??
-        handleReplayApprovalPageRequest(request) ?? handleClaimSetReviewPageRequest(request) ?? await handleCheckoutApiRequest(request, dependencies);
+        handleReplayApprovalPageRequest(request) ?? handleClaimSetReviewPageRequest(request) ??
+        await handleEvaluationPageRequest(request, dependencies.loadEvaluationReport) ?? await handleCheckoutApiRequest(request, dependencies);
       response.headers.forEach((value, name) => outgoing.setHeader(name, value));
       outgoing.writeHead(response.status);
       outgoing.end(method === "HEAD" ? undefined : Buffer.from(await response.arrayBuffer()));

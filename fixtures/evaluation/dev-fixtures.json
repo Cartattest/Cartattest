@@ -1,0 +1,14 @@
+{
+  "fixtureVersion": "evaluation-dev-v1",
+  "synthetic": true,
+  "claimSets": [
+    "claim-waterproof-v1",
+    "claim-compatibility-v1",
+    "claim-fulfillment-v1"
+  ],
+  "selections": [
+    "synthetic-rainshell/blue-m",
+    "synthetic-rainshell/black-m",
+    "synthetic-rainshell/green-m"
+  ]
+}

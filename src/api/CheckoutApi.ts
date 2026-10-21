@@ -28,6 +28,7 @@ export interface CheckoutApiDependencies {
   evidenceBundleSigning?: EvidenceBundleSigningConfig;
   replay?: { approveOrder(orderId: string): Promise<void> };
   buyerKeyId?: string;
+  loadEvaluationReport?: () => Promise<unknown>;
 }
 
 export async function handleCheckoutApiRequest(request: Request, dependencies: CheckoutApiDependencies): Promise<Response> {
