@@ -1,0 +1,15 @@
+{
+  "observedAtUtc": "2026-10-22T18:36:55Z",
+  "test": "G0-11",
+  "environment": "Sandbox",
+  "initialOrderStatus": "COMPLETED",
+  "captureAttempt": {
+    "method": "POST",
+    "path": "/v2/checkout/orders/{orderId}/capture",
+    "httpStatus": 422,
+    "error": "UNPROCESSABLE_ENTITY",
+    "issue": "ORDER_ALREADY_CAPTURED"
+  },
+  "followUpGet": { "orderStatus": "COMPLETED" },
+  "observation": "PayPal Sandbox rejected a second capture attempt on an already completed order. The completed order remained completed."
+}
