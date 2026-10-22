@@ -4,6 +4,9 @@ import { patchSandboxOrder } from "./gate0-patch.mjs";
 
 const [action, ...args] = process.argv.slice(2);
 if (process.env.PAYPAL_ENV === "live") throw new Error("GATE0_SANDBOX_ONLY");
+if (action === "create" && (!process.env.PAYPAL_RETURN_URL || !process.env.PAYPAL_CANCEL_URL)) {
+  throw new Error("PAYPAL_RETURN_URLS_REQUIRED");
+}
 const gateway = new OrdersV2Gateway({
   clientId: required("PAYPAL_CLIENT_ID"),
   clientSecret: required("PAYPAL_CLIENT_SECRET"),
