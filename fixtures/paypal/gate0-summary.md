@@ -1,6 +1,6 @@
 # PayPal Sandbox Gate 0 results
 
-**Status:** IN PROGRESS — G0-01 capture, G0-02 created/approved comparison, G0-03, G0-04 amount increase, G0-05 amount decrease, G0-06 same-total item substitution, G0-07 quantity/unit-price mutation, and G0-08 shipping-address mutation recorded. G0-09 expansion attempts were rejected by the path parser; a supported expansion path remains unresolved. The provider omitted the create-time shipping-preference projection on both G0-02 GETs. Remaining mutation/webhook observations are pending.
+**Status:** IN PROGRESS — G0-01 capture, G0-02 created/approved comparison, G0-03, G0-04 amount increase, G0-05 amount decrease, G0-06 same-total item substitution, G0-07 quantity/unit-price mutation, G0-08 shipping-address mutation, and G0-10 intent mutation recorded. G0-09 expansion attempts were rejected by the path parser; a supported expansion path remains unresolved. The provider omitted the create-time shipping-preference projection on both G0-02 GETs. Remaining mutation/webhook observations are pending.
 
 Use `buildpack/spec/GATE0_PAYPAL_TEST_PLAN.md` when running the full characterization. Record only sanitized fixtures; do not commit raw responses, payer data, addresses, access tokens, or credentials. Each result must name the tested Sandbox account/app, UTC date, request shape, response status, observed state, and whether fresh buyer approval was required. Results describe only this tested flow.
 
@@ -28,7 +28,7 @@ Use `buildpack/spec/GATE0_PAYPAL_TEST_PLAN.md` when running the full characteriz
 | G0-07 Quantity/unit-price change preserving total | OBSERVED | PATCH accepted with HTTP 204; quantity changed from 1 to 2, unit price from GBP 20.00 to GBP 10.00, per-item tax from GBP 2.00 to GBP 1.00; total and completed capture remained GBP 25.50. CartAttest was not in this direct test. | Yes | `sanitized/g0-07-quantity-unit-price.json` |
 | G0-08 Shipping address mutation | OBSERVED | PATCH accepted with HTTP 204; follow-up GET showed the changed address (details redacted); capture completed for GBP 25.50. CartAttest was not in this direct test. | Yes | `sanitized/g0-08-shipping-address-mutation.json` |
 | G0-09 Purchase-unit expansion | IN PROGRESS | Four patch attempts to add/replace a second unit returned HTTP 422 (`INVALID_JSON_POINTER_FORMAT` for root/index paths; `REFERENCE_ID_NOT_FOUND` for the new reference selector). Follow-up GET remained `APPROVED` with one unit and GBP 25.50. No capture attempted; supported expansion syntax remains unresolved. | Yes | `sanitized/g0-09-purchase-unit-expansion.json` |
-| G0-10 Payee/intent mutation | NOT RUN | — | — | — |
+| G0-10 Payee/intent mutation | OBSERVED (intent) | PATCH from `CAPTURE` to `AUTHORIZE` returned HTTP 422 `UNPROCESSABLE_ENTITY`, issue `CANNOT_MODIFY_INTENT`; follow-up GET remained `APPROVED` with intent `CAPTURE`. Payee mutation not attempted. | Yes | `sanitized/g0-10-intent-mutation.json` |
 | G0-11 Duplicate capture | NOT RUN | — | — | — |
 | G0-12 `custom_id` mutation | NOT RUN | — | — | — |
 | G0-13 Ambiguous capture reconciliation | NOT RUN | — | — | — |
@@ -47,6 +47,7 @@ Fill this from observed results. Do not label a PayPal behavior as a CartAttest 
 | Quantity/unit-price mutation | CARTATTEST CONTROL (pending Gate 1 verification) | PayPal Sandbox accepted the changed quantity and unit price and completed capture at the unchanged total in this direct test. Verify CartAttest blocks the Binding mismatch in Gate 1. |
 | Shipping address mutation | CARTATTEST CONTROL (pending Gate 1 verification) | PayPal Sandbox accepted the changed address and completed capture in this direct test. Verify CartAttest blocks capture for the Binding mismatch in Gate 1. |
 | Purchase-unit expansion | NOT CLASSIFIED (patch syntax unresolved) | The attempted root, index, and new-reference paths were rejected; the existing order remained a one-unit approved order. No capture attempted. |
+| Intent mutation | PAYPAL CONTROL | Sandbox rejected the intent change with `CANNOT_MODIFY_INTENT` on this approved order. Payee mutation not attempted. |
 | Duplicate capture | NOT RUN | — |
 
 ## Demo decision
@@ -74,3 +75,5 @@ Fill this from observed results. Do not label a PayPal behavior as a CartAttest 
 **G0-07 follow-up (2026-10-22):** On a fresh approved order, quantity changed from 1 to 2, unit price from GBP 20.00 to GBP 10.00, and per-item tax from GBP 2.00 to GBP 1.00, preserving GBP 25.50 total. PayPal accepted the PATCH (204), and capture completed at GBP 25.50. This direct Gateway test did not exercise CartAttest's Binding comparison; Gate 1 must verify its mismatch block.
 
 **G0-08 follow-up (2026-10-22):** On a fresh approved order, the shipping address was replaced with a different fictional test address. PayPal accepted the PATCH (204); follow-up GET confirmed the address differed from the persisted binding, and capture completed at GBP 25.50. The address itself is redacted. This direct Gateway test did not exercise CartAttest's Binding comparison; Gate 1 must verify its mismatch block.
+
+**G0-10 follow-up (2026-10-22):** On the approved one-unit order, an attempt to change `intent` from `CAPTURE` to `AUTHORIZE` returned HTTP 422 `CANNOT_MODIFY_INTENT`. Follow-up GET showed the order remained `APPROVED` with intent `CAPTURE`. Payee mutation was not attempted.
