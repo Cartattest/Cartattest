@@ -1,0 +1,29 @@
+{
+  "observedAtUtc": "2026-10-22T18:38:49Z",
+  "test": "G0-13",
+  "environment": "Sandbox",
+  "orderStatusBeforeCapture": "APPROVED",
+  "captureAttempt": {
+    "method": "POST",
+    "path": "/v2/checkout/orders/{orderId}/capture",
+    "paypalRequestIdHeaderPresent": true,
+    "simulatedClientResponseLoss": true,
+    "httpStatusReceivedByNetworkLayer": 201,
+    "clientObservedResponse": false
+  },
+  "reconciliationGet": {
+    "orderStatus": "COMPLETED",
+    "captureStatus": "COMPLETED",
+    "captureAmount": { "currency": "GBP", "value": "25.50" }
+  },
+  "retry": {
+    "performed": false,
+    "reason": "GET reconciliation confirmed completion; no retry was appropriate."
+  },
+  "localImplementationEvidence": {
+    "service": "src/application/CompleteCheckoutService.ts",
+    "test": "tests/CompleteCheckoutService.test.mjs",
+    "behavior": "Persisted unknown attempts are reconciled by GET first; retry occurs only if still APPROVED and uses the persisted paypalRequestId. Existing test asserts request ID reuse; not run during this live observation."
+  },
+  "observation": "The live capture response was deliberately dropped after the network layer received HTTP 201. A subsequent GET confirmed completion, so the client did not retry."
+}

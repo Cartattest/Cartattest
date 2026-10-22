@@ -1,6 +1,6 @@
 # PayPal Sandbox Gate 0 results
 
-**Status:** IN PROGRESS — G0-01 capture, G0-02 created/approved comparison, G0-03, G0-04 amount increase, G0-05 amount decrease, G0-06 same-total item substitution, G0-07 quantity/unit-price mutation, G0-08 shipping-address mutation, G0-10 intent mutation, G0-11 duplicate capture, and G0-12 `custom_id` mutation recorded. G0-09 expansion attempts were rejected by the path parser; a supported expansion path remains unresolved. The provider omitted the create-time shipping-preference projection on both G0-02 GETs. Remaining mutation/webhook observations are pending.
+**Status:** IN PROGRESS — G0-01 capture, G0-02 created/approved comparison, G0-03, G0-04 amount increase, G0-05 amount decrease, G0-06 same-total item substitution, G0-07 quantity/unit-price mutation, G0-08 shipping-address mutation, G0-10 intent mutation, G0-11 duplicate capture, G0-12 `custom_id` mutation, and live G0-13 ambiguous capture reconciliation recorded. G0-09 expansion attempts were rejected by the path parser; a supported expansion path remains unresolved. The provider omitted the create-time shipping-preference projection on both G0-02 GETs. G0-13's persisted retry behavior has existing local test coverage, not rerun here.
 
 Use `buildpack/spec/GATE0_PAYPAL_TEST_PLAN.md` when running the full characterization. Record only sanitized fixtures; do not commit raw responses, payer data, addresses, access tokens, or credentials. Each result must name the tested Sandbox account/app, UTC date, request shape, response status, observed state, and whether fresh buyer approval was required. Results describe only this tested flow.
 
@@ -31,7 +31,7 @@ Use `buildpack/spec/GATE0_PAYPAL_TEST_PLAN.md` when running the full characteriz
 | G0-10 Payee/intent mutation | OBSERVED (intent) | PATCH from `CAPTURE` to `AUTHORIZE` returned HTTP 422 `UNPROCESSABLE_ENTITY`, issue `CANNOT_MODIFY_INTENT`; follow-up GET remained `APPROVED` with intent `CAPTURE`. Payee mutation not attempted. | Yes | `sanitized/g0-10-intent-mutation.json` |
 | G0-11 Duplicate capture | OBSERVED | Second capture attempt returned HTTP 422 `UNPROCESSABLE_ENTITY`, issue `ORDER_ALREADY_CAPTURED`; follow-up GET remained `COMPLETED`. | Already approved/captured | `sanitized/g0-11-duplicate-capture.json` |
 | G0-12 `custom_id` mutation | OBSERVED | PATCH accepted with HTTP 204; follow-up GET showed `custom_id` present. No capture attempted. Existing binding test confirms this field is excluded from the CartAttest material projection. | Yes | `sanitized/g0-12-custom-id-mutation.json` |
-| G0-13 Ambiguous capture reconciliation | NOT RUN | — | — | — |
+| G0-13 Ambiguous capture reconciliation | OBSERVED (live reconciliation) | Capture request was dispatched with a PayPal-Request-Id; the test wrapper dropped the client response after receiving HTTP 201. Reconciliation GET returned `COMPLETED`, capture `COMPLETED` GBP 25.50; no retry was appropriate. Existing local test asserts a persisted unknown attempt retries only after GET still shows `APPROVED` and reuses its request ID; test not rerun here. | Yes | `sanitized/g0-13-ambiguous-capture-reconciliation.json` |
 | G0-14 Admission expiry blocks capture | LOCAL PASS | Unit test confirms expiry blocks before PayPal GET (`tests/binding-checks.test.mjs`) | N/A | — |
 
 ## Control classification
@@ -50,6 +50,7 @@ Fill this from observed results. Do not label a PayPal behavior as a CartAttest 
 | Intent mutation | PAYPAL CONTROL | Sandbox rejected the intent change with `CANNOT_MODIFY_INTENT` on this approved order. Payee mutation not attempted. |
 | Duplicate capture | PAYPAL CONTROL | Sandbox rejected the second capture with `ORDER_ALREADY_CAPTURED`; follow-up GET remained `COMPLETED`. |
 | `custom_id` mutation | CARTATTEST CONTROL | Sandbox accepted metadata mutation; source mapper and existing unit test exclude it from the material binding. |
+| Ambiguous capture | CARTATTEST CONTROL (existing local coverage) | Live Sandbox response-loss simulation reconciled to `COMPLETED` by GET; existing local code/test covers reusing a persisted request ID on retry when GET remains `APPROVED`. |
 | Duplicate capture | NOT RUN | — |
 
 ## Demo decision
@@ -83,3 +84,5 @@ Fill this from observed results. Do not label a PayPal behavior as a CartAttest 
 **G0-11 follow-up (2026-10-22):** A second capture attempt on the completed G0-08 order returned HTTP 422 `ORDER_ALREADY_CAPTURED`; follow-up GET remained `COMPLETED`.
 
 **G0-12 follow-up (2026-10-22):** PayPal accepted adding `custom_id` to the approved G0-09 order (HTTP 204); follow-up GET showed the value present. The binding mapper does not project this metadata, and an existing unit test asserts that changing `custom_id` does not change the material binding. No capture was attempted.
+
+**G0-13 follow-up (2026-10-22):** A live Sandbox capture request was dispatched with a PayPal-Request-Id through a test wrapper that dropped the response after receiving HTTP 201. A fresh GET returned order and capture status `COMPLETED` at GBP 25.50; no retry was sent. The application service and existing unit test cover persisted unknown-attempt GET reconciliation and reuse of the stored request ID if the order is still `APPROVED`; that test was not run in this session.
