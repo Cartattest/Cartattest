@@ -1,0 +1,41 @@
+{
+  "observedAtUtc": "2026-10-22T18:35:52Z",
+  "test": "G0-09",
+  "environment": "Sandbox",
+  "initialOrderStatus": "APPROVED",
+  "initialPurchaseUnitCount": 1,
+  "initialAmount": { "currency": "GBP", "value": "25.50" },
+  "patchAttempts": [
+    {
+      "operation": "add",
+      "path": "/purchase_units/-",
+      "httpStatus": 422,
+      "issue": "INVALID_JSON_POINTER_FORMAT"
+    },
+    {
+      "operation": "replace",
+      "path": "/purchase_units",
+      "httpStatus": 422,
+      "issue": "INVALID_JSON_POINTER_FORMAT"
+    },
+    {
+      "operation": "add",
+      "path": "/purchase_units/1",
+      "httpStatus": 422,
+      "issue": "INVALID_JSON_POINTER_FORMAT"
+    },
+    {
+      "operation": "add",
+      "path": "/purchase_units/@reference_id=='g0-09-expansion'",
+      "httpStatus": 422,
+      "issue": "REFERENCE_ID_NOT_FOUND"
+    }
+  ],
+  "followUpGet": {
+    "orderStatus": "APPROVED",
+    "purchaseUnitCount": 1,
+    "amount": { "currency": "GBP", "value": "25.50" }
+  },
+  "captureAttempted": false,
+  "observation": "The attempted expansion patches did not change the order. Their paths were rejected; no claim is made that every supported method of adding a purchase unit was exhausted."
+}
