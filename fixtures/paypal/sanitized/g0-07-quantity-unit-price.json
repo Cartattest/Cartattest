@@ -1,0 +1,34 @@
+{
+  "observedAtUtc": "2026-10-22T05:04:41Z",
+  "test": "G0-07",
+  "environment": "Sandbox",
+  "initialOrderStatus": "APPROVED",
+  "initialItem": {
+    "name": "Fictional Waterproof Shell",
+    "sku": "SHELL-BLUE-M",
+    "quantity": "1",
+    "unitAmount": "20.00",
+    "tax": "2.00"
+  },
+  "patch": {
+    "method": "PATCH",
+    "path": "/v2/checkout/orders/{orderId}",
+    "operation": "replace",
+    "field": "/purchase_units/@reference_id=='default'/items",
+    "httpStatus": 204,
+    "item": {
+      "name": "Fictional Waterproof Shell",
+      "sku": "SHELL-BLUE-M",
+      "quantity": "2",
+      "unitAmount": "10.00",
+      "tax": "1.00"
+    },
+    "amountUnchanged": { "currency": "GBP", "value": "25.50" }
+  },
+  "capture": {
+    "captureStatus": "COMPLETED",
+    "captureAmount": { "currency": "GBP", "value": "25.50" },
+    "followUpOrderStatus": "COMPLETED"
+  },
+  "observation": "PayPal Sandbox accepted the quantity and unit-price mutation, retained the GBP 25.50 total, and completed capture. CartAttest binding-mismatch rejection was not exercised by this direct Gate 0 test."
+}

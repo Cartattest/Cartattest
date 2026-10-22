@@ -1,6 +1,6 @@
 # PayPal Sandbox Gate 0 results
 
-**Status:** IN PROGRESS — G0-01 capture, G0-02 created/approved comparison, G0-03, G0-04 amount increase, G0-05 amount decrease, and G0-06 same-total item substitution recorded. The provider omitted the create-time shipping-preference projection on both G0-02 GETs. Remaining mutation/webhook observations are pending.
+**Status:** IN PROGRESS — G0-01 capture, G0-02 created/approved comparison, G0-03, G0-04 amount increase, G0-05 amount decrease, G0-06 same-total item substitution, and G0-07 quantity/unit-price mutation recorded. The provider omitted the create-time shipping-preference projection on both G0-02 GETs. Remaining mutation/webhook observations are pending.
 
 Use `buildpack/spec/GATE0_PAYPAL_TEST_PLAN.md` when running the full characterization. Record only sanitized fixtures; do not commit raw responses, payer data, addresses, access tokens, or credentials. Each result must name the tested Sandbox account/app, UTC date, request shape, response status, observed state, and whether fresh buyer approval was required. Results describe only this tested flow.
 
@@ -25,7 +25,7 @@ Use `buildpack/spec/GATE0_PAYPAL_TEST_PLAN.md` when running the full characteriz
 | G0-04 Increase amount after approval | OBSERVED | PATCH accepted with HTTP 204; capture returned HTTP 422 `UNPROCESSABLE_ENTITY`, issue `PAYER_ACTION_REQUIRED`; follow-up GET returned `PAYER_ACTION_REQUIRED`. Fresh buyer action required. No capture completed. | Yes; order was approved, then reapproval became required after mutation | `sanitized/g0-04-amount-increase.json` |
 | G0-05 Decrease amount after approval | OBSERVED | After the buyer approved the GBP 26.50 order, PATCH reduced it to GBP 24.50 (204); capture completed for GBP 24.50 without another approval after the decrease; follow-up GET returned `COMPLETED`. | Yes; buyer approved the GBP 26.50 order before the decrease | `sanitized/g0-05-amount-decrease.json` |
 | G0-06 Same-total item/SKU substitution | OBSERVED | PATCH accepted with HTTP 204; PayPal retained GBP 25.50 total with the substituted item/SKU, and capture completed for GBP 25.50. This direct provider test did not exercise CartAttest's Binding mismatch block. | Yes | `sanitized/g0-06-same-total-item-substitution.json` |
-| G0-07 Quantity/unit-price change preserving total | NOT RUN | — | — | — |
+| G0-07 Quantity/unit-price change preserving total | OBSERVED | PATCH accepted with HTTP 204; quantity changed from 1 to 2, unit price from GBP 20.00 to GBP 10.00, per-item tax from GBP 2.00 to GBP 1.00; total and completed capture remained GBP 25.50. CartAttest was not in this direct test. | Yes | `sanitized/g0-07-quantity-unit-price.json` |
 | G0-08 Shipping address mutation | NOT RUN | — | — | — |
 | G0-09 Purchase-unit expansion | NOT RUN | — | — | — |
 | G0-10 Payee/intent mutation | NOT RUN | — | — | — |
@@ -44,6 +44,7 @@ Fill this from observed results. Do not label a PayPal behavior as a CartAttest 
 | Amount increase | PAYPAL CONTROL / DEFENSE IN DEPTH | Sandbox accepted the patched amount but capture required fresh payer action (`PAYER_ACTION_REQUIRED`). This is an observation for this exact Sandbox flow. |
 | Amount decrease | PAYPAL CONTROL | Sandbox captured the decreased GBP 24.50 amount after buyer approval of the GBP 26.50 order; exact tested flow only. |
 | Item/SKU substitution | CARTATTEST CONTROL (pending Gate 1 verification) | PayPal Sandbox accepted the same-total item/SKU mutation and completed capture in this direct test. Verify CartAttest blocks capture for the Binding mismatch in Gate 1. |
+| Quantity/unit-price mutation | CARTATTEST CONTROL (pending Gate 1 verification) | PayPal Sandbox accepted the changed quantity and unit price and completed capture at the unchanged total in this direct test. Verify CartAttest blocks the Binding mismatch in Gate 1. |
 | Shipping address mutation | NOT RUN | — |
 | Duplicate capture | NOT RUN | — |
 
@@ -68,3 +69,5 @@ Fill this from observed results. Do not label a PayPal behavior as a CartAttest 
 **G0-05 follow-up (2026-10-21):** After the buyer approved the GBP 26.50 order, the total was reduced to GBP 24.50 with a balanced breakdown. PayPal accepted the PATCH (204); capture completed for GBP 24.50, and follow-up GET returned `COMPLETED`. PayPal did not require another buyer approval after this decrease in this exact flow. No additional claim is made about other account/order configurations.
 
 **G0-06 follow-up (2026-10-22):** On a fresh approved order, the item was replaced with `Fictional Trail Shell` / `SHELL-RED-M` at the same unit price and quantity, preserving the GBP 25.50 total. PayPal accepted the PATCH (204), the GET showed the substituted item, and capture completed at GBP 25.50. This direct Gateway test did not exercise CartAttest's Binding comparison; Gate 1 must prove that CartAttest blocks capture for the mismatch.
+
+**G0-07 follow-up (2026-10-22):** On a fresh approved order, quantity changed from 1 to 2, unit price from GBP 20.00 to GBP 10.00, and per-item tax from GBP 2.00 to GBP 1.00, preserving GBP 25.50 total. PayPal accepted the PATCH (204), and capture completed at GBP 25.50. This direct Gateway test did not exercise CartAttest's Binding comparison; Gate 1 must verify its mismatch block.
