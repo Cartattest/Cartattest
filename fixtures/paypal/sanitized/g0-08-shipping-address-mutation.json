@@ -1,0 +1,21 @@
+{
+  "observedAtUtc": "2026-10-22T18:15:29Z",
+  "test": "G0-08",
+  "environment": "Sandbox",
+  "initialOrderStatus": "APPROVED",
+  "patch": {
+    "method": "PATCH",
+    "path": "/v2/checkout/orders/{orderId}",
+    "operation": "replace",
+    "field": "/purchase_units/@reference_id=='default'/shipping/address",
+    "httpStatus": 204,
+    "addressChanged": true,
+    "addressData": "[REDACTED]"
+  },
+  "capture": {
+    "captureStatus": "COMPLETED",
+    "captureAmount": { "currency": "GBP", "value": "25.50" },
+    "followUpOrderStatus": "COMPLETED"
+  },
+  "observation": "PayPal Sandbox accepted the shipping-address mutation and completed capture. The returned address differed from the persisted binding. This direct Gate 0 test did not exercise CartAttest's Binding mismatch block."
+}
