@@ -38,6 +38,15 @@ cp .env.example .env
 
 Set `DATABASE_URL` before running migrations. Keep `.env` local and never commit credentials.
 
+For a fresh checkout, generate the local buyer and receipt-signing key pairs before starting the server or running `pnpm replay:e2e`:
+
+```sh
+pnpm keygen buyer-local-v1 .codex/keys/buyer
+pnpm keygen service-local-v1 .codex/keys/service
+```
+
+These local keys live under ignored `.codex/`; the command refuses to overwrite existing key files.
+
 ## Commands
 
 ```sh

@@ -8,9 +8,11 @@ This guide separates implemented configuration from the external services and ow
 corepack enable
 pnpm install
 cp .env.example .env
+pnpm keygen buyer-local-v1 .codex/keys/buyer
+pnpm keygen service-local-v1 .codex/keys/service
 ```
 
-Keep secrets in `.env`; it is gitignored. Never paste credentials into source, chat, issues, or public fixtures.
+Keep secrets in `.env`; it is gitignored. Never paste credentials into source, chat, issues, or public fixtures. The key-generation command refuses to overwrite existing files.
 
 ## Configuration
 
@@ -22,9 +24,9 @@ Keep secrets in `.env`; it is gitignored. Never paste credentials into source, c
 | `PAYPAL_RETURN_URL`, `PAYPAL_CANCEL_URL` | Absolute browser destinations for PayPal approval and cancellation. | Set both to the deployed CartAttest `/checkout/return` and `/checkout/cancel` endpoints before browser checkout. |
 | `PAYPAL_WEBHOOK_ID` | Webhook ID registered under the same PayPal app. | Optional while starting locally; the webhook route returns 503 until configured. A public HTTPS callback is needed for real delivery. |
 | `PAYPAL_MERCHANT_ID` or `PAYPAL_MERCHANT_EMAIL` | Sandbox business account that receives the order. | Set exactly one to the seller account value; buyer credentials are not the payee. |
-| `CARTATTEST_BUYER_KEY_ID`, `CARTATTEST_BUYER_PUBLIC_KEY_PATH` | Trusted buyer signing key for Claim Sets and exact overrides. | Defaults to the local-only `buyer-local-v1` key pair under ignored `.codex/keys`; keep the private key local. |
+| `CARTATTEST_BUYER_KEY_ID`, `CARTATTEST_BUYER_PUBLIC_KEY_PATH` | Trusted buyer signing key for Claim Sets and exact overrides. | Generate the local-only `buyer-local-v1` pair under ignored `.codex/keys` with the setup command; keep the private key local. |
 | `ATTESTOR_PROVIDER`, `ATTESTOR_MODEL_ID`, `ATTESTOR_API_KEY` | Provider, exact model, and provider key for semantic claims. | No provider adapter is wired. Freeze evaluation inputs before selecting/tuning the model or creating a key. |
-| `CARTATTEST_SERVICE_PRIVATE_KEY_PATH`, `CARTATTEST_SERVICE_PUBLIC_KEY_PATH`, `CARTATTEST_SERVICE_KEY_ID` | Service key for signed evidence bundles. | Local defaults point into ignored `.codex/keys`; generate the pair with `pnpm keygen service-local-v1 .codex/keys/service`. |
+| `CARTATTEST_SERVICE_PRIVATE_KEY_PATH`, `CARTATTEST_SERVICE_PUBLIC_KEY_PATH`, `CARTATTEST_SERVICE_KEY_ID` | Service key for signed evidence bundles. | Local defaults point into ignored `.codex/keys`; generate the pair with the setup command. |
 | `DEMO_MODE` | `sandbox` or deterministic `replay`. | Defaults to Sandbox. Replay uses the recorded G0-01 approval/capture statuses with synthetic local order data; it never contacts PayPal or moves money. |
 
 ## Database
@@ -39,7 +41,7 @@ The migration command applies all versioned SQL files transactionally and record
 
 ## Local sandbox server
 
-The local browser flow is available at `/claim-set/review`; it displays the normalized constraints, signs them in-browser, and stores the Claim Set only after server verification. Keep the local `.private.pem` keys in ignored `.codex/keys`; never commit or upload them. Generate the service receipt key as described above. Configure the PayPal Sandbox app credentials, seller payee, and public HTTPS return/cancel URLs, then run:
+The local browser flow is available at `/claim-set/review`; it displays the normalized constraints, signs them in-browser, and stores the Claim Set only after server verification. Keep the local `.private.pem` keys in ignored `.codex/keys`; never commit or upload them. Generate both key pairs as described above. Configure the PayPal Sandbox app credentials, seller payee, and return/cancel URLs, then run:
 
     pnpm migrate
     pnpm start
