@@ -1,6 +1,6 @@
 # PayPal Sandbox Gate 0 results
 
-**Status:** IN PROGRESS — G0-01 capture, G0-02 created/approved comparison, G0-03, G0-04 amount increase, G0-05 amount decrease, G0-06 same-total item substitution, G0-07 quantity/unit-price mutation, G0-08 shipping-address mutation, G0-10 intent mutation, G0-11 duplicate capture, G0-12 `custom_id` mutation, and live G0-13 ambiguous capture reconciliation recorded. G0-09 expansion attempts were rejected by the path parser; a supported expansion path remains unresolved. The provider omitted the create-time shipping-preference projection on both G0-02 GETs. G0-13's persisted retry behavior has existing local test coverage, not rerun here.
+**Status:** IN PROGRESS — G0-01 through G0-09, G0-11 through G0-13 are recorded; G0-10 intent mutation is recorded, but payee mutation remains untested. G0-09 now confirms that adding a second purchase unit through the existing `default` reference is accepted. The provider omitted the create-time shipping-preference projection on both G0-02 GETs. G0-13's persisted retry behavior has existing local test coverage, not rerun here.
 
 Use `buildpack/spec/GATE0_PAYPAL_TEST_PLAN.md` when running the full characterization. Record only sanitized fixtures; do not commit raw responses, payer data, addresses, access tokens, or credentials. Each result must name the tested Sandbox account/app, UTC date, request shape, response status, observed state, and whether fresh buyer approval was required. Results describe only this tested flow.
 
@@ -9,7 +9,7 @@ Use `buildpack/spec/GATE0_PAYPAL_TEST_PLAN.md` when running the full characteriz
 | Field | Value |
 | --- | --- |
 | PayPal environment | Sandbox |
-| Test date/time (UTC) | 2026-10-20 17:08 UTC |
+| Latest observation (UTC) | 2026-10-23 20:27 UTC; see sanitized fixtures for each test time |
 | App/account label (non-secret) | Sandbox app; label not recorded |
 | API version / endpoint | Orders v2 |
 | Buyer approval required | Yes; G0-01 order currently requires payer action |
@@ -27,7 +27,7 @@ Use `buildpack/spec/GATE0_PAYPAL_TEST_PLAN.md` when running the full characteriz
 | G0-06 Same-total item/SKU substitution | OBSERVED | PATCH accepted with HTTP 204; PayPal retained GBP 25.50 total with the substituted item/SKU, and capture completed for GBP 25.50. This direct provider test did not exercise CartAttest's Binding mismatch block. | Yes | `sanitized/g0-06-same-total-item-substitution.json` |
 | G0-07 Quantity/unit-price change preserving total | OBSERVED | PATCH accepted with HTTP 204; quantity changed from 1 to 2, unit price from GBP 20.00 to GBP 10.00, per-item tax from GBP 2.00 to GBP 1.00; total and completed capture remained GBP 25.50. CartAttest was not in this direct test. | Yes | `sanitized/g0-07-quantity-unit-price.json` |
 | G0-08 Shipping address mutation | OBSERVED | PATCH accepted with HTTP 204; follow-up GET showed the changed address (details redacted); capture completed for GBP 25.50. CartAttest was not in this direct test. | Yes | `sanitized/g0-08-shipping-address-mutation.json` |
-| G0-09 Purchase-unit expansion | IN PROGRESS | Four patch attempts to add/replace a second unit returned HTTP 422 (`INVALID_JSON_POINTER_FORMAT` for root/index paths; `REFERENCE_ID_NOT_FOUND` for the new reference selector). Follow-up GET remained `APPROVED` with one unit and GBP 25.50. No capture attempted; supported expansion syntax remains unresolved. | Yes | `sanitized/g0-09-purchase-unit-expansion.json` |
+| G0-09 Purchase-unit expansion | OBSERVED | On a fresh approved one-unit order, `add` at `/purchase_units/@reference_id=='default'` returned HTTP 204. Follow-up GET showed two units: the new GBP 1.00 test unit and the original GBP 25.50 unit. Order remained `APPROVED`; no capture attempted. Earlier root/index paths and a new-reference selector had failed. | Yes | `sanitized/g0-09-purchase-unit-expansion.json` |
 | G0-10 Payee/intent mutation | OBSERVED (intent) | PATCH from `CAPTURE` to `AUTHORIZE` returned HTTP 422 `UNPROCESSABLE_ENTITY`, issue `CANNOT_MODIFY_INTENT`; follow-up GET remained `APPROVED` with intent `CAPTURE`. Payee mutation not attempted. | Yes | `sanitized/g0-10-intent-mutation.json` |
 | G0-11 Duplicate capture | OBSERVED | Second capture attempt returned HTTP 422 `UNPROCESSABLE_ENTITY`, issue `ORDER_ALREADY_CAPTURED`; follow-up GET remained `COMPLETED`. | Already approved/captured | `sanitized/g0-11-duplicate-capture.json` |
 | G0-12 `custom_id` mutation | OBSERVED | PATCH accepted with HTTP 204; follow-up GET showed `custom_id` present. No capture attempted. Existing binding test confirms this field is excluded from the CartAttest material projection. | Yes | `sanitized/g0-12-custom-id-mutation.json` |
@@ -46,7 +46,7 @@ Fill this from observed results. Do not label a PayPal behavior as a CartAttest 
 | Item/SKU substitution | CARTATTEST CONTROL (pending Gate 1 verification) | PayPal Sandbox accepted the same-total item/SKU mutation and completed capture in this direct test. Verify CartAttest blocks capture for the Binding mismatch in Gate 1. |
 | Quantity/unit-price mutation | CARTATTEST CONTROL (pending Gate 1 verification) | PayPal Sandbox accepted the changed quantity and unit price and completed capture at the unchanged total in this direct test. Verify CartAttest blocks the Binding mismatch in Gate 1. |
 | Shipping address mutation | CARTATTEST CONTROL (pending Gate 1 verification) | PayPal Sandbox accepted the changed address and completed capture in this direct test. Verify CartAttest blocks capture for the Binding mismatch in Gate 1. |
-| Purchase-unit expansion | NOT CLASSIFIED (patch syntax unresolved) | The attempted root, index, and new-reference paths were rejected; the existing order remained a one-unit approved order. No capture attempted. |
+| Purchase-unit expansion | PAYPAL ALLOWS; CARTATTEST GUARD NEEDS LIVE CONFIRMATION | Sandbox accepted insertion before the existing `default` unit and returned two units. Local binding projection rejects any count other than one (`UNSUPPORTED_PURCHASE_UNIT_COUNT`); no live CartAttest capture-block test was run for this mutation. No capture attempted. |
 | Intent mutation | PAYPAL CONTROL | Sandbox rejected the intent change with `CANNOT_MODIFY_INTENT` on this approved order. Payee mutation not attempted. |
 | Duplicate capture | PAYPAL CONTROL | Sandbox rejected the second capture with `ORDER_ALREADY_CAPTURED`; follow-up GET remained `COMPLETED`. |
 | `custom_id` mutation | CARTATTEST CONTROL | Sandbox accepted metadata mutation; source mapper and existing unit test exclude it from the material binding. |
@@ -80,6 +80,8 @@ Fill this from observed results. Do not label a PayPal behavior as a CartAttest 
 **G0-08 follow-up (2026-10-22):** On a fresh approved order, the shipping address was replaced with a different fictional test address. PayPal accepted the PATCH (204); follow-up GET confirmed the address differed from the persisted binding, and capture completed at GBP 25.50. The address itself is redacted. This direct Gateway test did not exercise CartAttest's Binding comparison; Gate 1 must verify its mismatch block.
 
 **G0-10 follow-up (2026-10-22):** On the approved one-unit order, an attempt to change `intent` from `CAPTURE` to `AUTHORIZE` returned HTTP 422 `CANNOT_MODIFY_INTENT`. Follow-up GET showed the order remained `APPROVED` with intent `CAPTURE`. Payee mutation was not attempted.
+
+**G0-09 follow-up (2026-10-23):** After the Sandbox buyer approved a fresh GBP 25.50 order, `PATCH add /purchase_units/@reference_id=='default'` inserted a second purchase unit for GBP 1.00. PayPal returned HTTP 204; follow-up GET returned `APPROVED` with two units (GBP 1.00 and GBP 25.50). No capture was attempted. The earlier attempts targeted `/purchase_units/-`, `/purchase_units`, `/purchase_units/1`, and a nonexistent reference; they do not contradict this successful selector-based insertion. The local binding mapper rejects the resulting two-unit order, but live CartAttest rejection remains to be verified separately.
 
 **G0-11 follow-up (2026-10-22):** A second capture attempt on the completed G0-08 order returned HTTP 422 `ORDER_ALREADY_CAPTURED`; follow-up GET remained `COMPLETED`.
 

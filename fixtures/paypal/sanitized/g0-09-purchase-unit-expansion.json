@@ -1,41 +1,56 @@
 {
-  "observedAtUtc": "2026-10-22T18:35:52Z",
+  "observedAtUtc": "2026-10-23T20:27:22Z",
   "test": "G0-09",
   "environment": "Sandbox",
-  "initialOrderStatus": "APPROVED",
-  "initialPurchaseUnitCount": 1,
-  "initialAmount": { "currency": "GBP", "value": "25.50" },
-  "patchAttempts": [
+  "priorAttempts": [
     {
-      "operation": "add",
       "path": "/purchase_units/-",
+      "operation": "add",
       "httpStatus": 422,
       "issue": "INVALID_JSON_POINTER_FORMAT"
     },
     {
-      "operation": "replace",
       "path": "/purchase_units",
+      "operation": "replace",
       "httpStatus": 422,
       "issue": "INVALID_JSON_POINTER_FORMAT"
     },
     {
-      "operation": "add",
       "path": "/purchase_units/1",
+      "operation": "add",
       "httpStatus": 422,
       "issue": "INVALID_JSON_POINTER_FORMAT"
     },
     {
-      "operation": "add",
       "path": "/purchase_units/@reference_id=='g0-09-expansion'",
+      "operation": "add",
       "httpStatus": 422,
       "issue": "REFERENCE_ID_NOT_FOUND"
     }
   ],
-  "followUpGet": {
-    "orderStatus": "APPROVED",
-    "purchaseUnitCount": 1,
-    "amount": { "currency": "GBP", "value": "25.50" }
-  },
-  "captureAttempted": false,
-  "observation": "The attempted expansion patches did not change the order. Their paths were rejected; no claim is made that every supported method of adding a purchase unit was exhausted."
+  "expansionCase": {
+    "initialOrderStatus": "APPROVED",
+    "initialPurchaseUnitCount": 1,
+    "initialAmount": { "currency": "GBP", "value": "25.50" },
+    "patch": {
+      "operation": "add",
+      "path": "/purchase_units/@reference_id=='default'",
+      "addedUnit": {
+        "referenceId": "g0-09-expansion",
+        "amount": { "currency": "GBP", "value": "1.00" },
+        "itemSku": "G0-09-EXPANSION"
+      },
+      "httpStatus": 204
+    },
+    "followUpGet": {
+      "orderStatus": "APPROVED",
+      "purchaseUnitCount": 2,
+      "purchaseUnits": [
+        { "referenceId": "g0-09-expansion", "amount": { "currency": "GBP", "value": "1.00" } },
+        { "referenceId": "default", "amount": { "currency": "GBP", "value": "25.50" } }
+      ]
+    },
+    "captureAttempted": false,
+    "observation": "Adding at the existing default reference inserted a second purchase unit. The order remained approved. No capture was attempted."
+  }
 }
