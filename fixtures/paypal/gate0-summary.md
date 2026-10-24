@@ -43,21 +43,21 @@ Fill this from observed results. Do not label a PayPal behavior as a CartAttest 
 | Unapproved capture | PAYPAL CONTROL | PayPal Sandbox returned `ORDER_NOT_APPROVED` before payer approval. |
 | Amount increase | PAYPAL CONTROL / DEFENSE IN DEPTH | Sandbox accepted the patched amount but capture required fresh payer action (`PAYER_ACTION_REQUIRED`). This is an observation for this exact Sandbox flow. |
 | Amount decrease | PAYPAL CONTROL | Sandbox captured the decreased GBP 24.50 amount after buyer approval of the GBP 26.50 order; exact tested flow only. |
-| Item/SKU substitution | CARTATTEST CONTROL (pending Gate 1 verification) | PayPal Sandbox accepted the same-total item/SKU mutation and completed capture in this direct test. Verify CartAttest blocks capture for the Binding mismatch in Gate 1. |
-| Quantity/unit-price mutation | CARTATTEST CONTROL (pending Gate 1 verification) | PayPal Sandbox accepted the changed quantity and unit price and completed capture at the unchanged total in this direct test. Verify CartAttest blocks the Binding mismatch in Gate 1. |
-| Shipping address mutation | CARTATTEST CONTROL (pending Gate 1 verification) | PayPal Sandbox accepted the changed address and completed capture in this direct test. Verify CartAttest blocks capture for the Binding mismatch in Gate 1. |
-| Purchase-unit expansion | PAYPAL ALLOWS; CARTATTEST GUARD NEEDS LIVE CONFIRMATION | Sandbox accepted insertion before the existing `default` unit and returned two units. Local binding projection rejects any count other than one (`UNSUPPORTED_PURCHASE_UNIT_COUNT`); no live CartAttest capture-block test was run for this mutation. No capture attempted. |
+| Item/SKU substitution | CARTATTEST CONTROL (live Gate 1 case) | PayPal Sandbox accepted the same-total item/SKU mutation and completed capture in the direct Gate 0 test. In Gate 1, CartAttest returned `CART_BINDING_MISMATCH`, marked the admission `ABORTED`, and made no capture attempt after the buyer approved the mutated order. |
+| Quantity/unit-price mutation | CARTATTEST CONTROL (projection tests; live scenario not run) | PayPal Sandbox accepted the changed quantity and unit price and completed capture at the unchanged total in the direct test. Binding tests cover these material fields; the live Gate 1 mutation changed item/SKU, not quantity/unit price. |
+| Shipping address mutation | CARTATTEST CONTROL (projection tests; live scenario not run) | PayPal Sandbox accepted the changed address and completed capture in the direct test. Binding tests cover the address; the live Gate 1 mutation changed item/SKU. |
+| Purchase-unit expansion | CARTATTEST CONTROL (projection test; live scenario not run) | Sandbox accepted insertion before the existing `default` unit and returned two units. Local binding projection rejects any count other than one (`UNSUPPORTED_PURCHASE_UNIT_COUNT`); the live Gate 1 test used a one-unit item/SKU mutation. No capture attempted in G0-09. |
 | Intent mutation | PAYPAL CONTROL | Sandbox rejected the intent change with `CANNOT_MODIFY_INTENT` on this approved order. |
-| Payee mutation | PAYPAL ALLOWS; CARTATTEST BINDING DEFENSE NEEDS GATE 1 CONFIRMATION | Sandbox accepted the payee-email change (204) and returned `APPROVED` on GET. The changed payee must not pass CartAttest Binding B; live Binding-mismatch blocking remains for Gate 1. No capture attempted. |
+| Payee mutation | PAYPAL ALLOWS; CARTATTEST BINDING DEFENSE COVERED BY PROJECTION TESTS | Sandbox accepted the payee-email change (204) and returned `APPROVED` on GET. Binding projection tests cover the payee; the live Gate 1 mutation changed item/SKU, so live payee-mutation blocking was not separately exercised. No capture attempted in G0-10. |
 | Duplicate capture | PAYPAL CONTROL | Sandbox rejected the second capture with `ORDER_ALREADY_CAPTURED`; follow-up GET remained `COMPLETED`. |
 | `custom_id` mutation | CARTATTEST CONTROL | Sandbox accepted metadata mutation; source mapper and existing unit test exclude it from the material binding. |
 | Ambiguous capture | CARTATTEST CONTROL (existing local coverage) | Live Sandbox response-loss simulation reconciled to `COMPLETED` by GET; existing local code/test covers reusing a persisted request ID on retry when GET remains `APPROVED`. |
 
 ## Demo decision
 
-**Chosen mutation:** G0-06 same-total item/SKU substitution is the leading demo candidate; confirm CartAttest blocks capture for the Binding mismatch in Gate 1 before using it.
+**Chosen mutation:** G0-06 same-total item/SKU substitution was used for the live Gate 1 demonstration. CartAttest blocked capture after buyer approval with `CART_BINDING_MISMATCH`.
 
-**Reason:** PayPal Sandbox accepted the mutation and completed same-total capture in this tested flow. The CartAttest control still needs live Gate 1 verification.
+**Reason:** PayPal Sandbox accepted the mutation and completed same-total capture in this tested flow; the live Gate 1 checkout confirmed CartAttest blocks the same mutation before capture.
 
 ## Binding projection
 
