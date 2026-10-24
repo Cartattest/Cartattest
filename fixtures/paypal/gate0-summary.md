@@ -1,6 +1,6 @@
 # PayPal Sandbox Gate 0 results
 
-**Status:** IN PROGRESS — G0-01 through G0-13 are recorded; G0-14 has a local pass. G0-10 now includes both intent and payee mutation. Remaining Gate 0 output: record the final G0-01 material projection mapping. G0-09 confirms that adding a second purchase unit through the existing `default` reference is accepted. PayPal omitted the create-time shipping-preference projection on both G0-02 GETs. G0-13's persisted retry behavior has existing local test coverage, not rerun here.
+**Status:** COMPLETE (2026-10-24) — G0-01 through G0-13 are recorded, G0-14 has a local pass, the material projection mapping and control matrix are recorded, and the G0-06 same-total item/SKU substitution is selected for the Gate 1 demo. The live CartAttest block for that mutation remains a Gate 1 acceptance check. G0-09 confirms that adding a second purchase unit through the existing `default` reference is accepted. PayPal omitted the create-time shipping-preference projection on both G0-02 GETs.
 
 Use `buildpack/spec/GATE0_PAYPAL_TEST_PLAN.md` when running the full characterization. Record only sanitized fixtures; do not commit raw responses, payer data, addresses, access tokens, or credentials. Each result must name the tested Sandbox account/app, UTC date, request shape, response status, observed state, and whether fresh buyer approval was required. Results describe only this tested flow.
 
@@ -9,17 +9,17 @@ Use `buildpack/spec/GATE0_PAYPAL_TEST_PLAN.md` when running the full characteriz
 | Field | Value |
 | --- | --- |
 | PayPal environment | Sandbox |
-| Latest observation (UTC) | 2026-10-23 20:27 UTC; see sanitized fixtures for each test time |
+| Latest observation (UTC) | 2026-10-24 12:49 UTC; see sanitized fixtures for each test time |
 | App/account label (non-secret) | Sandbox app; label not recorded |
 | API version / endpoint | Orders v2 |
-| Buyer approval required | Yes; G0-01 order currently requires payer action |
+| Buyer approval required | Yes; buyer approval was required and completed on the characterization orders marked above |
 | Sanitized fixture directory | `fixtures/paypal/sanitized/` |
 
 ## Observation log
 
 | Test | Result | HTTP/status observation | Buyer approval | Sanitized fixture |
 | --- | --- | --- | --- | --- |
-| G0-01 Vanilla itemized create/approve/capture | OBSERVED, projection incomplete | Order reached `APPROVED`; capture returned `COMPLETED`; follow-up GET returned `COMPLETED`. GET omitted the create-time shipping preference. Binding B uses the persisted admission value only for that omitted field; an explicit different preference remains a failure. The observation still needs to be recorded in the material projection mapping. | Yes | `sanitized/g0-01-approved-capture.json` |
+| G0-01 Vanilla itemized create/approve/capture | OBSERVED | Order reached `APPROVED`; capture returned `COMPLETED`; follow-up GET returned `COMPLETED`. GET omitted the create-time shipping preference. G0-02 established the material projection match using the persisted create value only for that omission; focused tests verify omission fallback and explicit-conflict rejection. | Yes | `sanitized/g0-01-approved-capture.json` |
 | G0-02 Created-vs-approved material diff | OBSERVED | Pre-approval GET returned `PAYER_ACTION_REQUIRED`; approved-side GET returned `APPROVED`. Both omitted `shipping_preference`; material bindings matched the create binding using the persisted preference. | Yes | `sanitized/g0-02-created-projection.json`; `sanitized/g0-02-approved-projection.json` |
 | G0-03 Capture before approval | OBSERVED | HTTP 422 `UNPROCESSABLE_ENTITY`, issue `ORDER_NOT_APPROVED`; order remained `PAYER_ACTION_REQUIRED` | Not approved | `sanitized/g0-03-unapproved-capture.json` |
 | G0-04 Increase amount after approval | OBSERVED | PATCH accepted with HTTP 204; capture returned HTTP 422 `UNPROCESSABLE_ENTITY`, issue `PAYER_ACTION_REQUIRED`; follow-up GET returned `PAYER_ACTION_REQUIRED`. Fresh buyer action required. No capture completed. | Yes; order was approved, then reapproval became required after mutation | `sanitized/g0-04-amount-increase.json` |
@@ -31,7 +31,7 @@ Use `buildpack/spec/GATE0_PAYPAL_TEST_PLAN.md` when running the full characteriz
 | G0-10 Payee/intent mutation | OBSERVED (intent and payee) | Intent PATCH from `CAPTURE` to `AUTHORIZE` returned HTTP 422 `CANNOT_MODIFY_INTENT`; order stayed `APPROVED` with `CAPTURE`. Payee email PATCH to a second controlled Sandbox business account returned HTTP 204; GET returned HTTP 200 with status `APPROVED`, intent `CAPTURE`, and the new payee. No capture attempted. | Yes | `sanitized/g0-10-intent-mutation.json`; `sanitized/g0-10-payee-mutation.json` |
 | G0-11 Duplicate capture | OBSERVED | Second capture attempt returned HTTP 422 `UNPROCESSABLE_ENTITY`, issue `ORDER_ALREADY_CAPTURED`; follow-up GET remained `COMPLETED`. | Already approved/captured | `sanitized/g0-11-duplicate-capture.json` |
 | G0-12 `custom_id` mutation | OBSERVED | PATCH accepted with HTTP 204; follow-up GET showed `custom_id` present. No capture attempted. Existing binding test confirms this field is excluded from the CartAttest material projection. | Yes | `sanitized/g0-12-custom-id-mutation.json` |
-| G0-13 Ambiguous capture reconciliation | OBSERVED (live reconciliation) | Capture request was dispatched with a PayPal-Request-Id; the test wrapper dropped the client response after receiving HTTP 201. Reconciliation GET returned `COMPLETED`, capture `COMPLETED` GBP 25.50; no retry was appropriate. Existing local test asserts a persisted unknown attempt retries only after GET still shows `APPROVED` and reuses its request ID; test not rerun here. | Yes | `sanitized/g0-13-ambiguous-capture-reconciliation.json` |
+| G0-13 Ambiguous capture reconciliation | OBSERVED (live and local) | Capture request was dispatched with a PayPal-Request-Id; the test wrapper dropped the client response after receiving HTTP 201. Reconciliation GET returned `COMPLETED`, capture `COMPLETED` GBP 25.50; no retry was appropriate. Focused local tests pass for completed/pending reconciliation and retry only after GET still shows `APPROVED`, reusing the persisted request ID. | Yes | `sanitized/g0-13-ambiguous-capture-reconciliation.json` |
 | G0-14 Admission expiry blocks capture | LOCAL PASS | Unit test confirms expiry blocks before PayPal GET (`tests/binding-checks.test.mjs`) | N/A | — |
 
 ## Control classification
@@ -52,7 +52,6 @@ Fill this from observed results. Do not label a PayPal behavior as a CartAttest 
 | Duplicate capture | PAYPAL CONTROL | Sandbox rejected the second capture with `ORDER_ALREADY_CAPTURED`; follow-up GET remained `COMPLETED`. |
 | `custom_id` mutation | CARTATTEST CONTROL | Sandbox accepted metadata mutation; source mapper and existing unit test exclude it from the material binding. |
 | Ambiguous capture | CARTATTEST CONTROL (existing local coverage) | Live Sandbox response-loss simulation reconciled to `COMPLETED` by GET; existing local code/test covers reusing a persisted request ID on retry when GET remains `APPROVED`. |
-| Duplicate capture | NOT RUN | — |
 
 ## Demo decision
 
@@ -62,15 +61,29 @@ Fill this from observed results. Do not label a PayPal behavior as a CartAttest 
 
 ## Binding projection
 
-**Created vs approved material projection:** NOT RECORDED.
+**Created vs approved material projection:** RECORDED. On G0-02, the pre-approval and approved projections matched the persisted create binding for returned material fields. PayPal omitted shipping preference in both GETs; only that absent value came from the persisted create binding. G0-01's post-capture GET showed the same omission.
 
-**Mapping decisions:** —
+**CartBindingV1 field mapping:**
 
-**G0-01 follow-up:** Sandbox buyer approval and capture succeeded on 2026-10-20. This is a positive observation for the exact tested flow only. PayPal GET omitted the create-time shipping preference; CartAttest retains the persisted requested value for that omission, and rejects an explicitly conflicting returned value. Record the omission as an observed projection limitation; do not imply PayPal returned the preference. Gate 0 remains incomplete pending the comparisons and remaining cases below.
+| CartBindingV1 field | PayPal Orders v2 projection | Mapping rule and observation |
+| --- | --- | --- |
+| `intent` | `intent` | Must equal `CAPTURE`; an approved-order attempt to change it to `AUTHORIZE` was rejected with `CANNOT_MODIFY_INTENT`. |
+| `purchaseUnitCount` | `purchase_units.length` | Exactly one is supported; a different count is rejected by CartAttest. |
+| `payee` | `purchase_units[0].payee.merchant_id` or `.email_address` | Use merchant ID when returned; otherwise bind the payee email. G0-10 showed PayPal accepts changing the email after approval, so Binding B must compare it. |
+| `currency` | `purchase_units[0].amount.currency_code` | Bind the returned three-letter currency. |
+| `amountBreakdown` | `purchase_units[0].amount.value` and `.amount.breakdown.{item_total,tax_total,shipping,handling,insurance,shipping_discount,discount}` | Bind total and all components. An absent optional component normalizes to `0.00`; mismatched currencies and malformed money are rejected. |
+| `shipping.preference` | `application_context.shipping_preference` or `payment_source.paypal.experience_context.shipping_preference` | Both tested GETs omitted this field. Only when absent, reuse persisted create-time `SET_PROVIDED_ADDRESS`; reject an explicit conflicting value. |
+| `shipping.name` | `purchase_units[0].shipping.name.full_name` | Bind the returned recipient name. The clean test comparison matched; value is redacted in fixtures. |
+| `shipping.address` | `purchase_units[0].shipping.address.{address_line_1,address_line_2,admin_area_2,admin_area_1,postal_code,country_code}` | Normalize and bind returned address fields. The clean test comparison matched; values are redacted. |
+| `shipping.optionId`, `shipping.type`, `shipping.amount` | Selected entry in `purchase_units[0].shipping.options[]` | Bind the selected option when returned. G0-02 GET omitted options; equality tolerates absent option ID/type and uses the amount breakdown's shipping value. |
+| `items[]` | `purchase_units[0].items[].{name,sku,quantity,unit_amount,tax}` | Bind item name, variant SKU, quantity, currency/amount, and tax. Missing item tax normalizes to `0.00`. |
+| Non-material response metadata | `id`, `status`, `payer`, `links`, timestamps, `custom_id`, and other non-binding fields | Excluded from the material CartBinding comparison. |
+
+**G0-01 follow-up:** Sandbox buyer approval and capture succeeded on 2026-10-20. This is a positive observation for the exact tested flow only. PayPal GET omitted the create-time shipping preference; CartAttest retains the persisted requested value only for that omission, and rejects an explicitly conflicting returned value. G0-02 records the material comparison and focused tests verify the fallback rule. Do not imply PayPal returned the preference.
 
 **G0-02 follow-up (2026-10-21):** Buyer approved fresh order `5H467160G6251084G`. The approved-side GET returned `APPROVED` and also omitted `shipping_preference`. A comparison of the approved material projection with the persisted create binding matched, allowing the persisted `SET_PROVIDED_ADDRESS` value only for the field PayPal omitted. Sanitized approved-side projection is recorded in `sanitized/g0-02-approved-projection.json`; no capture was performed for this comparison.
 
-**G0-04 follow-up (2026-10-21):** On the G0-02 order after its approved-side projection was recorded, the amount was increased from GBP 25.50 to GBP 26.50 with a balanced breakdown. PayPal accepted the PATCH (204), but capture returned 422 `PAYER_ACTION_REQUIRED`; follow-up GET confirmed the order returned to `PAYER_ACTION_REQUIRED`. No capture completed. The approval URL is available from the current Sandbox session; a new buyer approval is required before continuing with G0-05.
+**G0-04 follow-up (2026-10-21):** On the G0-02 order after its approved-side projection was recorded, the amount was increased from GBP 25.50 to GBP 26.50 with a balanced breakdown. PayPal accepted the PATCH (204), but capture returned 422 `PAYER_ACTION_REQUIRED`; follow-up GET confirmed the order returned to `PAYER_ACTION_REQUIRED`. No capture completed during G0-04. The buyer approved the order again before the separate G0-05 amount-decrease observation.
 
 **G0-05 follow-up (2026-10-21):** After the buyer approved the GBP 26.50 order, the total was reduced to GBP 24.50 with a balanced breakdown. PayPal accepted the PATCH (204); capture completed for GBP 24.50, and follow-up GET returned `COMPLETED`. PayPal did not require another buyer approval after this decrease in this exact flow. No additional claim is made about other account/order configurations.
 
@@ -80,7 +93,7 @@ Fill this from observed results. Do not label a PayPal behavior as a CartAttest 
 
 **G0-08 follow-up (2026-10-22):** On a fresh approved order, the shipping address was replaced with a different fictional test address. PayPal accepted the PATCH (204); follow-up GET confirmed the address differed from the persisted binding, and capture completed at GBP 25.50. The address itself is redacted. This direct Gateway test did not exercise CartAttest's Binding comparison; Gate 1 must verify its mismatch block.
 
-**G0-10 follow-up (2026-10-22):** On the approved one-unit order, an attempt to change `intent` from `CAPTURE` to `AUTHORIZE` returned HTTP 422 `CANNOT_MODIFY_INTENT`. Follow-up GET showed the order remained `APPROVED` with intent `CAPTURE`. Payee mutation was not attempted.
+**G0-10 intent follow-up (2026-10-22):** On the approved one-unit order, an attempt to change `intent` from `CAPTURE` to `AUTHORIZE` returned HTTP 422 `CANNOT_MODIFY_INTENT`. Follow-up GET showed the order remained `APPROVED` with intent `CAPTURE`. Payee mutation was not part of this earlier observation; see the 2026-10-24 follow-up below.
 
 **G0-09 follow-up (2026-10-23):** After the Sandbox buyer approved a fresh GBP 25.50 order, `PATCH add /purchase_units/@reference_id=='default'` inserted a second purchase unit for GBP 1.00. PayPal returned HTTP 204; follow-up GET returned `APPROVED` with two units (GBP 1.00 and GBP 25.50). No capture was attempted. The earlier attempts targeted `/purchase_units/-`, `/purchase_units`, `/purchase_units/1`, and a nonexistent reference; they do not contradict this successful selector-based insertion. The local binding mapper rejects the resulting two-unit order, but live CartAttest rejection remains to be verified separately.
 
@@ -91,3 +104,5 @@ Fill this from observed results. Do not label a PayPal behavior as a CartAttest 
 **G0-13 follow-up (2026-10-22):** A live Sandbox capture request was dispatched with a PayPal-Request-Id through a test wrapper that dropped the response after receiving HTTP 201. A fresh GET returned order and capture status `COMPLETED` at GBP 25.50; no retry was sent. The application service and existing unit test cover persisted unknown-attempt GET reconciliation and reuse of the stored request ID if the order is still `APPROVED`; that test was not run in this session.
 
 **G0-10 payee follow-up (2026-10-24):** The buyer approved fresh order `5TE93938FU008544M`. The browser returned to CartAttest and displayed `ADMISSION_NOT_FOUND` because this direct Gate 0 order has no CartAttest admission; an independent PayPal GET confirmed status `APPROVED`. Replacing `/purchase_units/@reference_id=='default'/payee/email_address` with the second controlled Sandbox business account returned HTTP 204. Follow-up GET returned HTTP 200, `APPROVED`, intent `CAPTURE`, one purchase unit, and the target payee. No capture was attempted. The target email is redacted.
+
+**G0-13 local follow-up (2026-10-24):** Ten focused `CompleteCheckoutService` and capture-state tests passed, covering completed/pending reconciliation, avoiding a retry after completion, and retry only after GET confirms `APPROVED` with reuse of the persisted PayPal request ID.

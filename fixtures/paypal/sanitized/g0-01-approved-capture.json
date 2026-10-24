@@ -12,8 +12,8 @@
     "approvedOrderStatus": "APPROVED",
     "captureStatus": "COMPLETED",
     "followUpOrderStatus": "COMPLETED",
-    "materialProjectionCheck": "INCOMPLETE",
-    "projectionIssue": "The post-capture GET omitted shipping_preference from both application_context and payment_source.paypal.experience_context. The current mapper therefore rejects it with FIXED_SHIPPING_REQUIRED.",
+    "materialProjectionCheck": "INCOMPLETE_AT_INITIAL_OBSERVATION; RESOLVED_BY_G0-02",
+    "projectionIssue": "The post-capture GET omitted shipping_preference from both application_context and payment_source.paypal.experience_context. The initial mapper rejected the omission; G0-02 later confirmed that using the persisted create-time preference only when PayPal omits it produces a matching material binding.",
     "payerDataAndIdentifiers": "omitted"
   }
 }
