@@ -1,8 +1,8 @@
 # PayPal Sandbox Gate 0 results
 
-**Status:** COMPLETE (2026-10-24) — G0-01 through G0-13 are recorded, G0-14 has a local pass, the material projection mapping and control matrix are recorded, and the G0-06 same-total item/SKU substitution is selected for the Gate 1 demo. The live CartAttest block for that mutation remains a Gate 1 acceptance check. G0-09 confirms that adding a second purchase unit through the existing `default` reference is accepted. PayPal omitted the create-time shipping-preference projection on both G0-02 GETs.
+**Status:** COMPLETE (2026-10-24) — G0-01 through G0-13 are recorded, G0-14 has a local pass, the material projection mapping and control matrix are recorded, and G0-06 same-total item/SKU substitution was used in the live Gate 1 demo. Gate 1 confirmed CartAttest blocks that mutation before capture; see `gate1-summary.md`. G0-09 confirms that adding a second purchase unit through the existing `default` reference is accepted. PayPal omitted the create-time shipping-preference projection on both G0-02 GETs.
 
-Use `buildpack/spec/GATE0_PAYPAL_TEST_PLAN.md` when running the full characterization. Record only sanitized fixtures; do not commit raw responses, payer data, addresses, access tokens, or credentials. Each result must name the tested Sandbox account/app, UTC date, request shape, response status, observed state, and whether fresh buyer approval was required. Results describe only this tested flow.
+If extending or repeating the characterization, use fresh Sandbox orders and define the exact request and expected observation before testing. Retain only sanitized fixtures; do not commit raw responses, payer data, addresses, access tokens, or credentials. Record the non-secret app/account label, UTC date, request shape, response status, observed state, and whether fresh buyer approval was required. Results describe only the tested flow.
 
 ## Test environment
 

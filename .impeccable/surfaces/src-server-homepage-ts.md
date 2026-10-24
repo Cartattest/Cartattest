@@ -21,7 +21,7 @@ FIRST VIEWPORT: Use a left-aligned introduction beside a compact, clearly ordere
 
 FORM: Narrow user request for a route hub instead of a redirect. Code-led extension of the existing product UI; no concept seed or visual comp used.
 
-FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+FINISH: desktop and 390px mobile screenshots reviewed; mobile document width matches the viewport; detector returned no findings. No raster assets were introduced. This is a local extension of the established buyer UI language, so no global DESIGN.md change was made.
 
 ## Task contract
 

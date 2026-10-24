@@ -1,62 +1,76 @@
 # CartAttest
 
-CartAttest checks whether an AI shopping agent's product choice matches the buyer's constraints before creating a PayPal order. The current codebase contains the core TypeScript services and persistence layer for governed checkout.
+CartAttest checks an AI shopping agent's product choice against buyer-approved constraints and merchant evidence before creating a PayPal order. It then checks that the PayPal order still matches the admitted cart before capture.
 
-## Implemented
+## Delivery status
 
-- Validated and hashed Claim Set storage.
-- Deterministic checks for merchant, SKU, variant, quantity, currency and budget claims.
-- Evidence completeness, freshness, source authority and semantic-attestation validation with process-local memoization.
-- PayPal Orders v2 gateway, CartBinding checks before and after buyer approval, and a persisted checkout admission.
-- Atomic capture attempts, GET-first reconciliation after uncertain capture responses, and verified, idempotent PayPal webhook handling.
-- Server-side PayPal approval return and cancellation handlers that resolve order tokens through persisted admissions.
-- Buyer Claim Set review and browser-side ES256 signing; the API verifies signatures before storing claims.
-- Signed evidence-bundle creation and verification against an externally pinned key.
-- A PayPal Sandbox or deterministic replay server, buyer STEP-UP and verified receipt pages, automatic signed bundle finalization, CI tests and secret scanning.
-- Dependency-injected API handlers and a versioned PostgreSQL schema.
+| Area | Status | Evidence / remaining work |
+| --- | --- | --- |
+| Gate 0 — PayPal characterization | Complete for the recorded Sandbox account and flows | [Gate 0 observations](fixtures/paypal/gate0-summary.md) and sanitized fixtures. G0-14 has a local unit-test pass, not a PayPal observation. |
+| Gate 1 — Governed checkout | Live Sandbox acceptance complete | Successful checkout/capture and a mutated Binding B blocked before capture: [Gate 1 evidence](fixtures/paypal/gate1-summary.md). |
+| Gate 2 — Semantic admission | Incomplete | Deterministic policy, evidence handling, signatures, STEP-UP, development corpus, and report view exist. The owner must freeze the private holdout and decide provider/model; then implement and evaluate a semantic provider adapter. |
+| Gate 3 — Evidence and replay | Live Sandbox acceptance complete | Webhook delivery, duplicate delivery, GET-first reconciliation, and receipt verification: [Gate 3 evidence](fixtures/paypal/gate3-summary.md). |
+| Hosted CI for current local commits | Not yet confirmed | Push the current branch and confirm both `test` and `secrets` jobs pass. |
 
-## Current limits
+The evaluation holdout, provider/model decision, release ownership, and authorization remain owner decisions. Do not use private holdout data for development or tune a model before the evaluation freeze.
 
-Replay mode is local and synthetic: it reuses the recorded G0-01 approval/capture status, but does not contact PayPal or move money. A configured semantic-attestor provider is not complete. The server fails closed on semantic claims until evaluation inputs are frozen and an attestor is configured. The fixture merchant is for development only. Receipt signing uses a local key generated with `pnpm keygen service-local-v1 .codex/keys/service`; production deployments must pin and manage their signing key outside the application bundle.
+## What is implemented
 
-Gate 0 is still in progress: a Sandbox order was approved and captured, but the material create-vs-approval projection and remaining mutation/webhook observations are incomplete. See [fixtures/paypal/gate0-summary.md](fixtures/paypal/gate0-summary.md) and [HOW_TO.md](HOW_TO.md). Unit tests do not replace live PostgreSQL or end-to-end checkout verification.
+- Buyer-signed Claim Sets and signature verification.
+- Deterministic merchant, SKU, variant, quantity, currency, budget, evidence completeness, freshness, and source-authority checks.
+- PayPal Orders v2 Sandbox and deterministic Replay gateways.
+- CartBinding checks before and after approval, persisted admissions, capture attempts, and GET-first reconciliation.
+- Verified, idempotent PayPal webhook ingestion and signed evidence receipts.
+- Buyer STEP-UP and receipt pages, an evaluation report view, and a root demo hub.
+- PostgreSQL persistence, offline bundle verification, tests, and CI workflows.
 
-## Requirements
+Semantic claims currently fail closed as `UNPROVEN`: no semantic provider adapter is wired. Replay is synthetic and does not contact PayPal or move money. The fixture merchant catalogue and local signing keys are for development; they are not production trust infrastructure.
 
-- Node.js 22
-- pnpm 10.29.3
-- PostgreSQL for repository and migration use
-- PayPal Sandbox credentials for Gate 0 and live checkout characterization
+## Requirements and setup
 
-## Setup
+- Node.js 22.x and pnpm 10.29.3
+- PostgreSQL
+- PayPal Sandbox REST credentials for Sandbox mode; not required for Replay
 
 ```sh
 corepack enable
 pnpm install
 cp .env.example .env
-```
-
-Set `DATABASE_URL` before running migrations. Keep `.env` local and never commit credentials.
-
-For a fresh checkout, generate the local buyer and receipt-signing key pairs before starting the server or running `pnpm replay:e2e`:
-
-```sh
 pnpm keygen buyer-local-v1 .codex/keys/buyer
 pnpm keygen service-local-v1 .codex/keys/service
+pnpm migrate
 ```
 
-These local keys live under ignored `.codex/`; the command refuses to overwrite existing key files.
+Set `DATABASE_URL` in `.env`. For Sandbox mode, also set the Sandbox client credentials, seller payee, and reachable return/cancel URLs. Keep `.env` and `.codex/` local; never commit credentials or private keys. See [HOW_TO.md](HOW_TO.md) for environment variables and detailed run instructions.
 
-## Commands
+## Run the app
+
+```sh
+DEMO_MODE=replay pnpm start
+# or, with PayPal Sandbox configured:
+DEMO_MODE=sandbox pnpm start
+```
+
+The server binds to `127.0.0.1:3000` by default. Open `/` for the demo hub. The buyer Claim Set page and evaluation view are also available directly. STEP-UP and receipt pages require IDs created by a checkout.
+
+| Route | Purpose |
+| --- | --- |
+| `/` | Demo hub with links to Buyer Review and Evaluation |
+| `/claim-set/review` | Review and sign buyer requirements |
+| `/evaluation` | Development evaluation report view |
+| `/step-up/{sessionId}` | Review an eligible exception created during checkout |
+| `/receipt/{bundleId}` | Verify a receipt created during checkout |
+| `POST /api/webhooks/paypal` | PayPal capture-completion webhook |
+
+Replay uses a labeled simulated approval and never contacts PayPal. A live Sandbox checkout requires a reachable approval return/cancel URL and Sandbox buyer approval. Neither local Replay nor a Sandbox result implies production readiness.
+
+## Useful commands
 
 ```sh
 pnpm typecheck
 pnpm test
 pnpm migrate
-DEMO_MODE=sandbox pnpm start
-DEMO_MODE=replay pnpm start
-# Then visit http://127.0.0.1:3000/evaluation for the evaluation view.
-pnpm replay:e2e             # while replay server is running
+pnpm replay:e2e             # run while the Replay server is available
 pnpm gate0 -- create path/to/cart-binding.json
 pnpm gate0 -- get PAYPAL_ORDER_ID
 pnpm gate0 -- capture PAYPAL_ORDER_ID PERSISTED_REQUEST_ID
@@ -64,29 +78,16 @@ pnpm gate0 -- patch PAYPAL_ORDER_ID path/to/patch.json
 pnpm eval:report -- fixtures/evaluation/dev-scenarios.jsonl fixtures/evaluation/dev-inputs.jsonl .codex/evaluation/dev-runs.jsonl .codex/evaluation/dev-report.json
 ```
 
-`pnpm migrate` applies the versioned checkout schema. Set `DEMO_MODE=replay` in `.env` for a local deterministic checkout with a labeled simulated approval; it does not contact PayPal or move money. Set `DEMO_MODE=sandbox` for real Sandbox checkout. Review patch files before applying because they mutate the named sandbox order. Record observations only after running the exact test against a sandbox account; Gate 0 remains in progress.
+The Gate 0 patch command mutates a Sandbox order. Review every patch file and use Sandbox only. Record new provider observations only after running the exact test; do not treat historical observations as universal PayPal behavior.
 
-## Security boundary
+## Security boundary and limitations
 
-Shopping-agent selection requests accept identifiers only. Price, terms, evidence, source authority, buyer decisions, PayPal order IDs and payment operations are resolved or controlled by the server. PayPal credentials and checkout operations stay server-side.
+The shopping-agent selection API accepts identifiers. CartAttest resolves price, terms, evidence, source authority, and PayPal actions on the server. PayPal credentials and capture operations stay server-side.
 
-## Threat model and limits
-
-The prototype assumes the shopping agent may misread product evidence or propose a selection that violates the buyer's Claim Set. CartAttest independently resolves the selected item and merchant evidence, applies source-authority policy, then binds the admitted cart to the PayPal order before capture. It does not prove that merchant statements are true, protect against a malicious merchant or operator controlling the evidence source, or provide an atomic PayPal compare-and-swap between the final order read and capture. The buyer decision page also assumes the shopping agent cannot automate that trusted origin.
-
-## Prior art and contribution
-
-PayPal approval and request idempotency govern payment authorization and duplicate requests. Signed receipts and generic admission gates can record or gate a transaction. CartAttest's prototype contribution is to evaluate source-typed merchant evidence against buyer-approved semantic constraints before order creation, then bind that admitted commerce object through execution. The evaluation should be read as a test of this composition, not a claim that any single component is new.
-
-## Questions this prototype does not settle
-
-- It cannot establish that a merchant's product claim is physically true; it can only show which supplied source supports or contradicts it.
-- It does not replace the buyer's PayPal approval or guarantee PayPal will reject every order mutation.
-- Its merchant catalogue is a development fixture, not a production connector or independent provenance authority.
-- Its hidden holdout and exact model configuration are still owner-controlled release prerequisites.
+CartAttest does not prove that merchant statements are physically true, protect against a malicious merchant or operator controlling the evidence source, or provide an atomic PayPal compare-and-swap between the final order read and capture. The buyer decision UI assumes the shopping agent cannot automate that trusted origin. The prototype does not replace PayPal buyer approval or guarantee PayPal will reject every possible order mutation.
 
 ## Development evaluation
 
-`fixtures/evaluation/` contains 20 synthetic matched pairs (40 cases) across the eight defined attack families. The report command checks pair and template coverage, validates one saved input per case, and scores supplied A/B/C and fail-closed reference run records. It reports unsafe ALLOWs, unnecessary STEP-UPs, instability, errors, and latency percentiles. Raw traces from the private run file are not copied into the report. The script scores runs; it does not call a model or create an evaluation lock. Do not use it for the owner-held holdout.
+`fixtures/evaluation/` contains 20 synthetic matched development pairs (40 cases) across eight attack families. The report command checks pair/template coverage and scores supplied A/B/C and fail-closed reference run records; it reports unsafe ALLOWs, unnecessary STEP-UPs, instability, errors, and latency percentiles. It does not call a model or freeze evaluation inputs. Do not use it with the private owner holdout.
 
-After a report is generated at `.codex/evaluation/dev-report.json`, the local server serves the compact results view at `/evaluation`. The API exposes only the aggregate development metrics needed by that page.
+After a local report is generated at `.codex/evaluation/dev-report.json`, the server exposes aggregate development metrics at `/evaluation` and `GET /api/evaluation/report`. The page shows no-report state when no report file exists; it is not a model result.

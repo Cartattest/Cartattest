@@ -1,13 +1,13 @@
 ---
 version: 1
-slug: "app-step-up-sessionid-page-tsx"
-primary_target: "app/step-up/[sessionId]/page.tsx"
+slug: "src-server-step-up-page-ts"
+primary_target: "src/server/StepUpPage.ts"
 related_targets: []
 ---
 
 # STEP-UP buyer review
 
-Scope: the hosted buyer decision screen at `/step-up/:sessionId`. Visitor mode: operate. Audience: the protected buyer reviewing an exception before checkout.
+Scope: the buyer decision screen at `/step-up/{sessionId}`, served by the Node HTTP server. Visitor mode: operate. Audience: the protected buyer reviewing an exception before checkout.
 
 ## Direction contract
 
@@ -19,10 +19,10 @@ STORY: The buyer sees the selected item and total, understands the failed claim 
 
 FIRST VIEWPORT: A quiet checkout header leads into one centered guarantee card. Its top row names the review and evidence status; product and total follow; the exact claim is the largest content; source-labeled evidence rows follow in authority order; actions sit below the evidence, with the exception scope directly under the acceptance action. On narrow screens, the card becomes a single column without horizontal scrolling.
 
-FORM: Consumer guarantee and product warranty cards, Impeccable's grounded pick, position 1, seed key 87e3c4cc. Use the chosen `model-pick.html` sketch as the code-led composition reference.
+FORM: Consumer guarantee and product warranty cards, Impeccable's grounded pick, position 1, seed key 87e3c4cc. The existing `src/server/StepUpPage.ts` implementation is the current composition reference; the former Next.js page and sketch are not part of this repository's runtime.
 
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
 
 ## Task contract
 
-The page loads a server-generated STEP-UP projection and offers only the server-defined actions. Evidence and claim text are data-bound; the client does not author or paraphrase them. Accepting an exception requires a valid buyer signature and preserves every non-overridable constraint. Unresolved: trusted buyer key provisioning and the Next.js runtime dependency install, currently blocked by npm registry DNS.
+The page loads a server-generated STEP-UP projection and offers only the server-defined actions. Evidence and claim text are data-bound; the client does not author or paraphrase them. Accepting an exception requires a valid buyer signature and preserves every non-overridable constraint. The local service verifies signatures against its configured buyer public key; the buyer selects the matching private key in the browser.
