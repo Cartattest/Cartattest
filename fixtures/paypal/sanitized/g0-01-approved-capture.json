@@ -1,0 +1,19 @@
+{
+  "observedAtUtc": "2026-10-20T17:47:00Z",
+  "test": "G0-01",
+  "environment": "PayPal Sandbox",
+  "request": {
+    "create": "POST /v2/checkout/orders; one CAPTURE purchase unit; GBP 25.50 total; one fictional item; complete amount breakdown; fixed provided shipping address",
+    "capture": "POST /v2/checkout/orders/{orderId}/capture",
+    "paypalRequestId": "redacted"
+  },
+  "observations": {
+    "approvalRequired": true,
+    "approvedOrderStatus": "APPROVED",
+    "captureStatus": "COMPLETED",
+    "followUpOrderStatus": "COMPLETED",
+    "materialProjectionCheck": "INCOMPLETE_AT_INITIAL_OBSERVATION; RESOLVED_BY_G0-02",
+    "projectionIssue": "The post-capture GET omitted shipping_preference from both application_context and payment_source.paypal.experience_context. The initial mapper rejected the omission; G0-02 later confirmed that using the persisted create-time preference only when PayPal omits it produces a matching material binding.",
+    "payerDataAndIdentifiers": "omitted"
+  }
+}

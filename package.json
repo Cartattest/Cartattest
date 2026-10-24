@@ -1,0 +1,31 @@
+{
+  "name": "cart-attest",
+  "private": true,
+  "version": "0.1.0",
+  "engines": {
+    "node": "22.x"
+  },
+  "packageManager": "pnpm@10.29.3",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc",
+    "test": "pnpm build && node --experimental-strip-types --test",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "migrate": "pnpm build && node --env-file=.env scripts/migrate.mjs",
+    "gate0": "pnpm build && node --env-file=.env scripts/gate0.mjs",
+    "verify:bundle": "pnpm build && node scripts/verify-bundle.mjs",
+    "keygen": "node scripts/generate-es256-key.mjs",
+    "start": "pnpm build && node --env-file=.env scripts/server.mjs",
+    "replay:e2e": "node --env-file=.env scripts/replay-e2e.mjs",
+    "eval:report": "node scripts/evaluation-report.mjs"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "canonicalize": "5.1.0",
+    "pg": "^8.23.1"
+  }
+}

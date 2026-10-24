@@ -1,0 +1,22 @@
+{
+  "observedAtUtc": "2026-10-22T18:37:47Z",
+  "test": "G0-12",
+  "environment": "Sandbox",
+  "initialOrderStatus": "APPROVED",
+  "patch": {
+    "method": "PATCH",
+    "path": "/v2/checkout/orders/{orderId}",
+    "operation": "add",
+    "field": "/purchase_units/@reference_id=='default'/custom_id",
+    "value": "cart-attest-g0-12-test",
+    "httpStatus": 204
+  },
+  "followUpGet": {
+    "orderStatus": "APPROVED",
+    "purchaseUnitCount": 1,
+    "customIdPresent": true
+  },
+  "captureAttempted": false,
+  "cartAttestBindingBehavior": "Existing mapper excludes custom_id; existing unit test asserts that changing custom_id does not change the material binding.",
+  "observation": "Sandbox accepted custom_id mutation. No capture was attempted."
+}

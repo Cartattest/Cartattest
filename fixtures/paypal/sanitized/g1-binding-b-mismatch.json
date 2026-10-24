@@ -1,0 +1,29 @@
+{
+  "observedAtUtc": "2026-10-24T13:08:49Z",
+  "test": "G1-Binding-B-mismatch-after-approval",
+  "environment": "PayPal Sandbox",
+  "admissionId": "ae912cf0-8d2c-42ca-b3ba-57a9e926b1ef",
+  "orderId": "6DW679671P694401K",
+  "initialItem": { "name": "StormGuard Demo Jacket", "sku": "SGD-BLK-M" },
+  "sameTotalMutation": {
+    "method": "PATCH",
+    "field": "/purchase_units/@reference_id=='default'/items",
+    "httpStatus": 204,
+    "item": { "name": "StormGuard Demo Jacket Variant", "sku": "SGD-ALT-M" },
+    "amount": { "currency": "GBP", "value": "97.50" }
+  },
+  "buyerApproved": true,
+  "cartAttestReturnResponse": { "error": "CART_BINDING_MISMATCH" },
+  "cartAttest": { "admissionState": "ABORTED", "captureAttemptCount": 0 },
+  "paypalFollowUpGet": {
+    "httpStatus": 200,
+    "orderStatus": "APPROVED",
+    "intent": "CAPTURE",
+    "purchaseUnitCount": 1,
+    "itemSku": "SGD-ALT-M",
+    "amount": { "currency": "GBP", "value": "97.50" },
+    "captureCount": 0
+  },
+  "captureAttempted": false,
+  "result": "PASS"
+}

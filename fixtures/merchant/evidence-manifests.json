@@ -1,0 +1,25 @@
+{
+  "profiles": [
+    {
+      "schema_version": "evidence-manifest-v1",
+      "evidence_profile_id": "waterproof-v1",
+      "required_source_classes": ["MERCHANT_TECHNICAL_SPEC"],
+      "admissible_source_classes": [
+        "MERCHANT_STRUCTURED_ATTRIBUTE",
+        "MERCHANT_TECHNICAL_SPEC",
+        "MERCHANT_DESCRIPTION",
+        "MERCHANT_QA",
+        "CUSTOMER_REVIEW"
+      ],
+      "source_authority": [
+        { "source_class": "MERCHANT_STRUCTURED_ATTRIBUTE", "rank": 100, "may_satisfy": true, "may_block_if_contradictory": true },
+        { "source_class": "MERCHANT_TECHNICAL_SPEC", "rank": 90, "may_satisfy": true, "may_block_if_contradictory": true },
+        { "source_class": "MERCHANT_DESCRIPTION", "rank": 60, "may_satisfy": false, "may_block_if_contradictory": false },
+        { "source_class": "MERCHANT_QA", "rank": 40, "may_satisfy": false, "may_block_if_contradictory": false },
+        { "source_class": "CUSTOMER_REVIEW", "rank": 20, "may_satisfy": false, "may_block_if_contradictory": false }
+      ],
+      "freshness_seconds": 900,
+      "contradiction_policy": "STEP_UP_ON_EQUAL_OR_HIGHER_AUTHORITY"
+    }
+  ]
+}

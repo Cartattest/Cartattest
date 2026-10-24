@@ -1,0 +1,29 @@
+{
+  "observedAtUtc": "2026-10-24T12:49:14Z",
+  "test": "G0-10-payee-mutation",
+  "environment": "Sandbox",
+  "orderId": "5TE93938FU008544M",
+  "buyerApprovalRequired": true,
+  "initialState": {
+    "orderStatus": "APPROVED",
+    "intent": "CAPTURE",
+    "payee": "original configured Sandbox seller"
+  },
+  "patch": {
+    "method": "PATCH",
+    "path": "/v2/checkout/orders/{orderId}",
+    "operation": "replace",
+    "field": "/purchase_units/@reference_id=='default'/payee/email_address",
+    "targetPayee": "second controlled Sandbox business account (email redacted)",
+    "httpStatus": 204
+  },
+  "followUpGet": {
+    "httpStatus": 200,
+    "orderStatus": "APPROVED",
+    "intent": "CAPTURE",
+    "purchaseUnitCount": 1,
+    "payeeMatchesTarget": true
+  },
+  "captureAttempted": false,
+  "observation": "PayPal Sandbox accepted changing the payee email on this approved order; the order remained APPROVED. No capture was attempted."
+}

@@ -147,3 +147,9 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# CartAttest local handoff and private development data
+buildpack/
+SESSION_CHECKPOINT.md
+.codex/
+.impeccable/

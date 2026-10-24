@@ -1,0 +1,71 @@
+{
+  "observedAtUtc": "2026-10-20T17:49:00Z",
+  "test": "G0-02",
+  "phase": "created-before-approval",
+  "orderStatus": "PAYER_ACTION_REQUIRED",
+  "projection": {
+    "intent": "CAPTURE",
+    "purchaseUnitCount": 1,
+    "payee": {
+      "identityType": "EMAIL",
+      "identityValue": "[REDACTED]"
+    },
+    "currency": "GBP",
+    "total": "25.50",
+    "breakdown": {
+      "item_total": {
+        "currency_code": "GBP",
+        "value": "20.00"
+      },
+      "shipping": {
+        "currency_code": "GBP",
+        "value": "3.50"
+      },
+      "handling": {
+        "currency_code": "GBP",
+        "value": "0.00"
+      },
+      "tax_total": {
+        "currency_code": "GBP",
+        "value": "2.00"
+      },
+      "insurance": {
+        "currency_code": "GBP",
+        "value": "0.00"
+      },
+      "shipping_discount": {
+        "currency_code": "GBP",
+        "value": "0.00"
+      },
+      "discount": {
+        "currency_code": "GBP",
+        "value": "0.00"
+      }
+    },
+    "shippingPreference": null,
+    "shipping": {
+      "name": "[REDACTED]",
+      "address": "[REDACTED]",
+      "countryCode": "IE",
+      "optionsPresent": false,
+      "amount": "3.50"
+    },
+    "items": [
+      {
+        "name": "Fictional Waterproof Shell",
+        "sku": "SHELL-BLUE-M",
+        "quantity": "1",
+        "unitAmount": "20.00",
+        "tax": "2.00"
+      }
+    ]
+  },
+  "initialMapperResult": "FIXED_SHIPPING_REQUIRED",
+  "note": "Sandbox GET omitted shipping_preference before buyer approval; the create request set SET_PROVIDED_ADDRESS.",
+  "recheck": {
+    "observedAtUtc": "2026-10-20T17:57:00Z",
+    "orderStatus": "PAYER_ACTION_REQUIRED",
+    "materialBindingMatch": true,
+    "shippingPreferenceSource": "persisted create binding; omitted by PayPal GET"
+  }
+}

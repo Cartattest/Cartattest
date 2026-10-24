@@ -1,0 +1,22 @@
+{
+  "observedAtUtc": "2026-10-22T18:36:29Z",
+  "test": "G0-10",
+  "environment": "Sandbox",
+  "initialOrderStatus": "APPROVED",
+  "initialIntent": "CAPTURE",
+  "patch": {
+    "method": "PATCH",
+    "path": "/v2/checkout/orders/{orderId}",
+    "operation": "replace",
+    "field": "/intent",
+    "value": "AUTHORIZE",
+    "httpStatus": 422,
+    "error": "UNPROCESSABLE_ENTITY",
+    "issue": "CANNOT_MODIFY_INTENT"
+  },
+  "followUpGet": {
+    "orderStatus": "APPROVED",
+    "intent": "CAPTURE"
+  },
+  "observation": "PayPal Sandbox rejected changing the intent from CAPTURE to AUTHORIZE on this approved order. No payee mutation was attempted."
+}

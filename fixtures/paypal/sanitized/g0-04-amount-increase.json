@@ -1,0 +1,39 @@
+{
+  "observedAtUtc": "2026-10-21T11:27:10Z",
+  "test": "G0-04",
+  "environment": "Sandbox",
+  "initialOrderStatus": "APPROVED",
+  "patch": {
+    "method": "PATCH",
+    "path": "/v2/checkout/orders/{orderId}",
+    "operation": "replace",
+    "field": "/purchase_units/@reference_id=='default'/amount",
+    "httpStatus": 204,
+    "amount": {
+      "currency": "GBP",
+      "previousTotal": "25.50",
+      "newTotal": "26.50",
+      "breakdown": {
+        "itemTotal": "20.00",
+        "taxTotal": "2.00",
+        "shipping": "4.50",
+        "handling": "0.00",
+        "insurance": "0.00",
+        "shippingDiscount": "0.00",
+        "discount": "0.00"
+      }
+    }
+  },
+  "captureAttempt": {
+    "method": "POST",
+    "path": "/v2/checkout/orders/{orderId}/capture",
+    "httpStatus": 422,
+    "error": "UNPROCESSABLE_ENTITY",
+    "issue": "PAYER_ACTION_REQUIRED"
+  },
+  "followUpGet": {
+    "orderStatus": "PAYER_ACTION_REQUIRED",
+    "buyerApprovalRequired": true
+  },
+  "observation": "Sandbox accepted the amount increase on the approved order, then required fresh payer action before capture. No capture completed."
+}

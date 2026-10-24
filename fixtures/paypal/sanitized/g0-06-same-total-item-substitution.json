@@ -1,0 +1,30 @@
+{
+  "observedAtUtc": "2026-10-22T05:02:44Z",
+  "test": "G0-06",
+  "environment": "Sandbox",
+  "initialOrderStatus": "APPROVED",
+  "initialAmount": { "currency": "GBP", "value": "25.50" },
+  "patch": {
+    "method": "PATCH",
+    "path": "/v2/checkout/orders/{orderId}",
+    "operation": "replace",
+    "field": "/purchase_units/@reference_id=='default'/items",
+    "httpStatus": 204,
+    "items": [
+      {
+        "name": "Fictional Trail Shell",
+        "sku": "SHELL-RED-M",
+        "quantity": "1",
+        "unitAmount": "20.00",
+        "tax": "2.00"
+      }
+    ],
+    "amountUnchanged": { "currency": "GBP", "value": "25.50" }
+  },
+  "capture": {
+    "captureStatus": "COMPLETED",
+    "captureAmount": { "currency": "GBP", "value": "25.50" },
+    "followUpOrderStatus": "COMPLETED"
+  },
+  "observation": "PayPal Sandbox accepted the same-total item and SKU replacement and completed capture. CartAttest binding-mismatch rejection was not exercised by this direct Gate 0 test."
+}

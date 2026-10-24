@@ -1,0 +1,33 @@
+{
+  "observedAtUtc": "2026-10-21T13:14:29Z",
+  "test": "G0-05",
+  "environment": "Sandbox",
+  "initialOrderStatus": "APPROVED",
+  "initialAmount": { "currency": "GBP", "value": "26.50" },
+  "patch": {
+    "method": "PATCH",
+    "path": "/v2/checkout/orders/{orderId}",
+    "operation": "replace",
+    "field": "/purchase_units/@reference_id=='default'/amount",
+    "httpStatus": 204,
+    "amount": {
+      "currency": "GBP",
+      "newTotal": "24.50",
+      "breakdown": {
+        "itemTotal": "20.00",
+        "taxTotal": "2.00",
+        "shipping": "2.50",
+        "handling": "0.00",
+        "insurance": "0.00",
+        "shippingDiscount": "0.00",
+        "discount": "0.00"
+      }
+    }
+  },
+  "capture": {
+    "captureStatus": "COMPLETED",
+    "captureAmount": { "currency": "GBP", "value": "24.50" },
+    "followUpOrderStatus": "COMPLETED"
+  },
+  "observation": "After the buyer approved the 26.50 GBP order, the amount was reduced to 24.50 GBP. PayPal accepted the PATCH and captured the lower amount without requiring another buyer approval after the decrease."
+}
