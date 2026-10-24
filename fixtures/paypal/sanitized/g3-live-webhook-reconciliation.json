@@ -1,0 +1,33 @@
+{
+  "observedAtUtc": "2026-10-24T13:09:34Z",
+  "test": "G3-live-webhook-reconciliation-and-duplicate-delivery",
+  "environment": "PayPal Sandbox",
+  "webhookCompletionEventType": "PAYMENT.CAPTURE.COMPLETED",
+  "events": [
+    {
+      "eventId": "WH-7T0595332V2192812-1WH51756LB517560F",
+      "admissionId": "54cb08eb-9005-491d-8083-814f10450e90",
+      "orderId": "7EG41407DG499003L",
+      "captureId": "0RW61939P5628651H",
+      "deliveryResult": "DELIVERED",
+      "databaseRows": 1,
+      "closureState": "CLOSED_VERIFIED_WEBHOOK",
+      "receiptVerified": true
+    },
+    {
+      "eventId": "WH-090056593T274653F-83T60762H0057891U",
+      "admissionId": "15b39f99-8dd3-4425-824c-7f1b219d562c",
+      "orderId": "9EC486051F3325259",
+      "captureId": "8K829184K98276908",
+      "dashboardDeliveryAttempts": [
+        { "localTime": "2026-10-24 13:28:35", "timezone": "Europe/Dublin", "result": "DELIVERED" },
+        { "localTime": "2026-10-24 13:36:11", "timezone": "Europe/Dublin", "result": "DELIVERED" }
+      ],
+      "dashboardListStatus": "FAILURE",
+      "databaseRows": 1,
+      "closureState": "CLOSED_RECONCILED",
+      "receiptVerified": true
+    }
+  ],
+  "result": "PASS"
+}
