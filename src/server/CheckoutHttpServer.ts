@@ -6,6 +6,7 @@ import { handleReceiptPageRequest } from "./ReceiptPage.js";
 import { handleReplayApprovalPageRequest } from "./ReplayApprovalPage.js";
 import { handleClaimSetReviewPageRequest } from "./ClaimSetReviewPage.js";
 import { handleEvaluationPageRequest } from "./EvaluationPage.js";
+import { handleHomePageRequest } from "./HomePage.js";
 
 export function createCheckoutHttpServer(dependencies: CheckoutApiDependencies): Server {
   return createServer(async (incoming, outgoing) => {
@@ -24,7 +25,7 @@ export function createCheckoutHttpServer(dependencies: CheckoutApiDependencies):
           duplex: "half"
         } : {})
       });
-      const response = handleStepUpPageRequest(request) ?? handleReceiptPageRequest(request) ??
+      const response = handleHomePageRequest(request) ?? handleStepUpPageRequest(request) ?? handleReceiptPageRequest(request) ??
         handleReplayApprovalPageRequest(request) ?? handleClaimSetReviewPageRequest(request) ??
         await handleEvaluationPageRequest(request, dependencies.loadEvaluationReport) ?? await handleCheckoutApiRequest(request, dependencies);
       response.headers.forEach((value, name) => outgoing.setHeader(name, value));
