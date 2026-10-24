@@ -1,0 +1,16 @@
+{
+  "observedAtUtc": "2026-10-24T09:48:32Z",
+  "test": "G1-successful-sandbox-checkout",
+  "environment": "PayPal Sandbox",
+  "admissionId": "54cb08eb-9005-491d-8083-814f10450e90",
+  "orderId": "7EG41407DG499003L",
+  "amount": { "currency": "GBP", "value": "97.50" },
+  "buyerApprovalRequired": true,
+  "capture": {
+    "captureId": "0RW61939P5628651H",
+    "status": "COMPLETED",
+    "closureState": "CLOSED_VERIFIED_WEBHOOK"
+  },
+  "receiptVerified": true,
+  "result": "PASS"
+}
