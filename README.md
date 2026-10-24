@@ -1,6 +1,6 @@
 # CartAttest
 
-CartAttest checks an AI shopping agent's product choice against buyer-approved constraints and merchant evidence before creating a PayPal order. It then checks that the PayPal order still matches the admitted cart before capture.
+CartAttest checks an AI shopping agent's product choice against buyer-approved constraints and merchant evidence before creating a PayPal order. It then checks that the PayPal order still matches the admitted cart before capture. The semantic provider is not yet wired, so semantic claims currently fail closed.
 
 ## Delivery status
 

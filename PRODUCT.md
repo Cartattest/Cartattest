@@ -12,7 +12,7 @@ Node.js 22, TypeScript, pnpm, PostgreSQL, PayPal Orders v2 REST, and browser Web
 
 ## Users
 
-The integrating customer is a developer, marketplace, or agent-commerce platform building PayPal-enabled shopping. The protected buyer reviews purchase constraints, resolves any eligible semantic STEP-UP, approves payment at PayPal, and verifies the receipt.
+The integrating customer is a developer, marketplace, or agent-commerce platform building PayPal-enabled shopping. The protected buyer reviews purchase constraints, approves payment at PayPal, and verifies the receipt. The STEP-UP screen exists, but model-backed semantic decisions are not enabled until Gate 2 is completed.
 
 ## Product Purpose
 
@@ -24,7 +24,7 @@ CartAttest resolves cart facts and evidence independently, applies deterministic
 
 ## Operating Context
 
-The buyer approves a Claim Set. An agent proposes item and fulfillment identifiers. CartAttest resolves the item, evidence, price, and shipping. It blocks, asks for another item, requests a buyer decision for an eligible exact-subject exception, or creates a PayPal order. After PayPal approval, the server checks the binding and captures only if it still matches. A signed receipt records the result.
+The buyer approves a Claim Set. An agent proposes item and fulfillment identifiers. CartAttest resolves the item, evidence, price, and shipping. It blocks, asks for another item, or creates a PayPal order; once a semantic provider is enabled, it can also request a buyer decision for an eligible exact-subject exception. After PayPal approval, the server checks the binding and captures only if it still matches. A signed receipt records the result.
 
 ## Capabilities and Constraints
 
