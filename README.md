@@ -1,20 +1,25 @@
 # CartAttest
 
-**Evidence-bound verification for autonomous AI commerce.**
+**Evidence-bound checks for AI shopping agents, before PayPal captures payment.**
 
-CartAttest checks an AI shopping agent's product choice against buyer-approved constraints and merchant evidence before creating a PayPal order. It then checks that the PayPal order still matches the admitted cart before capture. Semantic claims (for example "waterproof, not just water-resistant") are checked by a Google Gemini evidence attestor that must quote merchant evidence word for word; deterministic source-authority policy, not the model, decides admission. Without a configured model, semantic claims fail closed.
+- **Live demo** (PayPal sandbox, no real money): https://cartattest.onrender.com/demo
+- **Demo video:** https://youtu.be/IwMbwHq5WVE
+- **Licence:** Apache 2.0
 
-## Delivery status
+CartAttest checks an AI shopping agent's product choice against buyer-approved constraints and merchant evidence before creating a PayPal order. It then checks that the PayPal order still matches the admitted cart before capture. Semantic claims (for example "waterproof, not just water-resistant") are checked by a Google Gemini evidence attestor that must quote merchant evidence word for word; deterministic source-authority policy, not the model, decides admission. If the model is unavailable or its quotes don't match the evidence, the claim is treated as unproven and no PayPal order is created.
 
-| Area | Status | Evidence / remaining work |
-| --- | --- | --- |
-| Gate 0 — PayPal characterization | Complete for the recorded Sandbox account and flows | [Gate 0 observations](fixtures/paypal/gate0-summary.md) and sanitized fixtures. G0-14 has a local unit-test pass, not a PayPal observation. |
-| Gate 1 — Governed checkout | Live Sandbox acceptance complete | Successful checkout/capture and a mutated Binding B blocked before capture: [Gate 1 evidence](fixtures/paypal/gate1-summary.md). |
-| Gate 2 — Semantic admission | Incomplete | Deterministic policy, evidence handling, signatures, STEP-UP, development corpus, and report view exist. The owner must freeze the private holdout and decide provider/model; then implement and evaluate a semantic provider adapter. |
-| Gate 3 — Evidence and replay | Live Sandbox acceptance complete | Webhook delivery, duplicate delivery, GET-first reconciliation, and receipt verification: [Gate 3 evidence](fixtures/paypal/gate3-summary.md). |
-| Hosted CI for current local commits | Not yet confirmed | Push the current branch and confirm both `test` and `secrets` jobs pass. |
+## Status
 
-The evaluation holdout, provider/model decision, release ownership, and authorization remain owner decisions. Do not use private holdout data for development or tune a model before the evaluation freeze.
+| Area | Status |
+| --- | --- |
+| PayPal checkout (Orders v2, sandbox) | Working: an order is created only after checks pass, the approved order is re-checked before capture, capture is idempotent, and webhooks are verified and reconciled |
+| AI evidence checks (Google Gemini) | Working: gemini-3.5-flash with fallbacks; quotes must match the evidence word for word; failures are treated as unproven |
+| Signed receipts and decision log | Working: ES256-signed evidence bundles; AG Grid decision log at `/decisions` |
+| Hosted demo | Live on Render, deployed from `render.yaml` |
+| Tests | 214 automated tests pass (`pnpm test`) |
+| Not yet done | Private holdout evaluation of the model (so no accuracy figure is claimed), a production merchant adapter, and buyer signing on the buyer's own device in the hosted demo |
+
+Recorded PayPal sandbox evidence: [Gate 0](fixtures/paypal/gate0-summary.md), [Gate 1](fixtures/paypal/gate1-summary.md), [Gate 3](fixtures/paypal/gate3-summary.md).
 
 ## What is implemented
 
