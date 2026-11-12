@@ -1,6 +1,6 @@
 import { parseCompleteCheckoutRequest } from "../api/contracts.js";
-import { hashCartBinding } from "../binding/CartBindingV1.js";
-import type { CaptureAttemptV1 } from "../domain/types.js";
+import { assertBindingEqual, hashCartBinding, mapPayPalOrderToBinding } from "../binding/CartBindingV1.js";
+import type { AdmissionRecordV1, CaptureAttemptV1, CartBindingV1 } from "../domain/types.js";
 import { checkApprovedOrderBinding } from "../execution/BindingChecks.js";
 import type { PayPalGateway } from "../ports/PayPalGateway.js";
 import { abortAwaitingAdmission, loadAwaitingAdmission } from "../persistence/AdmissionRepository.js";
@@ -53,7 +53,7 @@ export async function completeCheckout(input: unknown, dependencies: CompleteChe
 
   if (attempt.attemptId !== newAttemptId || attempt.state === "EXECUTION_UNKNOWN" || attempt.state === "CAPTURE_PENDING" ||
       attempt.state === "CAPTURE_COMPLETED_PENDING_WEBHOOK") {
-    return reconcileCapture(dependencies, attempt);
+    return reconcileCapture(dependencies, attempt, admission);
   }
   if (attempt.state !== "IN_FLIGHT") return attempt;
 
@@ -83,7 +83,8 @@ async function capture(dependencies: CompleteCheckoutDependencies, attempt: Capt
 
 async function reconcileCapture(
   dependencies: CompleteCheckoutDependencies,
-  attempt: CaptureAttemptV1
+  attempt: CaptureAttemptV1,
+  admission: { record: AdmissionRecordV1; admittedCartBinding: CartBindingV1 }
 ): Promise<CaptureAttemptV1> {
   const current = await dependencies.gateway.getOrder(attempt.paypalOrderId);
   if (current.orderId !== attempt.paypalOrderId) throw new Error("PAYPAL_ORDER_ID_MISMATCH");
@@ -103,9 +104,22 @@ async function reconcileCapture(
         (attempt.state === "CAPTURE_PENDING" && reported.status === attempt.paypalCaptureStatus)) return attempt;
     return transitionCaptureAttempt(dependencies.pool, attempt.attemptId, event[reported.status], now.toISOString(), reported.id);
   }
-  return (attempt.state === "IN_FLIGHT" || attempt.state === "EXECUTION_UNKNOWN") && current.orderStatus === "APPROVED"
-    ? capture(dependencies, attempt)
-    : attempt;
+  if ((attempt.state === "IN_FLIGHT" || attempt.state === "EXECUTION_UNKNOWN") && current.orderStatus === "APPROVED") {
+    // A retry issues a new capture request, so it must re-establish everything the fresh path checked:
+    // the admission is still valid and the current PayPal order still matches the admitted cart (Binding B).
+    // Without this, an order changed after an ambiguous first attempt would be captured. Uses the same GET.
+    const checkedAt = dependencies.now?.() ?? new Date();
+    const expiresAt = Date.parse(admission.record.expiresAt);
+    if (!Number.isFinite(checkedAt.getTime()) || !Number.isFinite(expiresAt) || checkedAt.getTime() >= expiresAt) {
+      throw new Error("ADMISSION_EXPIRED");
+    }
+    assertBindingEqual(
+      admission.admittedCartBinding,
+      mapPayPalOrderToBinding(current.raw, admission.admittedCartBinding.shipping.preference)
+    );
+    return capture(dependencies, attempt);
+  }
+  return attempt;
 }
 
 function captureSnapshots(raw: unknown): Array<{ id?: string; status?: string }> {

@@ -98,6 +98,24 @@ test("retries only after GET confirms an unknown order is still approved, reusin
   assert.ok(calls.some((call) => Array.isArray(call) && call[0] === "capture-request-id" && call[1] === unknown.paypalRequestId));
 });
 
+test("does not retry an unknown capture when the approved order changed after the first attempt", async () => {
+  const calls = [];
+  await assert.rejects(completeCheckout({ admissionId: "admission-1" }, {
+    pool: fakePool(calls, { admissionRow, existingAttempt: captureAttempt("EXECUTION_UNKNOWN") }),
+    gateway: gateway(calls, { drift: true }), newId: () => "must-not-be-used", now: () => new Date(now)
+  }), { message: "CART_BINDING_MISMATCH" });
+  assert.deepEqual(calls.filter((call) => typeof call === "string"), ["paypal-get"]);
+});
+
+test("does not retry an in-flight capture after the admission expired", async () => {
+  const calls = [];
+  await assert.rejects(completeCheckout({ admissionId: "admission-1" }, {
+    pool: fakePool(calls, { admissionRow, existingAttempt: captureAttempt("IN_FLIGHT") }),
+    gateway: gateway(calls), newId: () => "must-not-be-used", now: () => new Date("2026-10-18T12:16:00.000Z")
+  }), { message: "ADMISSION_EXPIRED" });
+  assert.deepEqual(calls.filter((call) => typeof call === "string"), ["paypal-get"]);
+});
+
 function fakePool(calls, { admissionRow, existingAttempt }) {
   let attempt = existingAttempt;
   return { async connect() { return {
