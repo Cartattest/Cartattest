@@ -14,6 +14,7 @@ import { parseClaimSetV1 } from "./ClaimSetValidation.js";
 import { evaluateStepUpDecision, type StepUpContextV1 } from "../application/StepUpDecisionService.js";
 import type { BuyerOverrideV1 } from "../domain/types.js";
 import type { ClaimEvaluation } from "../policy/AdmissionPolicy.js";
+import { answeredModel } from "../attestor/GeminiSemanticAttestor.js";
 import canonicalize from "canonicalize";
 import { finalizeEvidenceBundle, type EvidenceBundleSigningConfig } from "../application/FinalizeEvidenceBundle.js";
 import { loadEvidenceBundle } from "../persistence/EvidenceBundleRepository.js";
@@ -515,7 +516,7 @@ function evidenceChecks(evaluations: ClaimEvaluation[]) {
     return [{
       claimId: evaluation.claim.claimId,
       result: attestation.result,
-      modelId: attestation.modelId,
+      modelId: answeredModel(attestation.attestationId) ?? attestation.modelId,
       supportQuotes: attestation.supportQuotes.map(quote),
       contradictionQuotes: attestation.contradictionQuotes.map(quote)
     }];

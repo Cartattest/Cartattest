@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { GeminiSemanticAttestor, GEMINI_SYSTEM_PROMPT, createGeminiAttestorConfig, parseModelOutput } from "../dist/attestor/GeminiSemanticAttestor.js";
+import { GeminiSemanticAttestor, GEMINI_SYSTEM_PROMPT, createGeminiAttestorConfig, parseModelOutput, answeredModel } from "../dist/attestor/GeminiSemanticAttestor.js";
 import { CachedSemanticAttestor } from "../dist/attestor/CachedSemanticAttestor.js";
 import { validateSemanticAttestation } from "../dist/attestor/AttestationValidation.js";
 import { evaluateSelectionAdmission } from "../dist/application/SelectionAdmissionEvaluator.js";
@@ -54,7 +54,7 @@ test("Gemini attestor returns an attestation that passes CartAttest validation",
   const spec = evidence.find((item) => item.sourceClass === "MERCHANT_TECHNICAL_SPEC");
   const calls = [];
   const config = await createGeminiAttestorConfig("gemini-test-model");
-  const attestor = new GeminiSemanticAttestor({ apiKey, modelId: "gemini-test-model", fetch: fakeGemini({ result: "SUPPORTED",
+  const attestor = new GeminiSemanticAttestor({ apiKey, modelIds: ["gemini-test-model"], retryBaseMs: 1, fetch: fakeGemini({ result: "SUPPORTED",
     supportQuotes: [{ evidenceId: spec.evidenceId, verbatim: "Waterproof and seam-sealed shell" }], contradictionQuotes: [] }, calls) });
   const attestation = await attestor.attest({ claimSetHash: `sha256:${"0".repeat(64)}`, claim, subjectHash: resolved.subjectHash,
     manifest, evidence, config });
@@ -77,7 +77,7 @@ test("a paraphrased quote fails closed as UNPROVEN through the cached attestor",
   const { resolved, evidence } = await evidenceFor("jacket-water-resistant-01");
   const review = evidence.find((item) => item.sourceClass === "CUSTOMER_REVIEW");
   const config = await createGeminiAttestorConfig("gemini-test-model");
-  const attestor = new CachedSemanticAttestor(new GeminiSemanticAttestor({ apiKey, modelId: "gemini-test-model",
+  const attestor = new CachedSemanticAttestor(new GeminiSemanticAttestor({ apiKey, modelIds: ["gemini-test-model"], retryBaseMs: 1,
     fetch: fakeGemini({ result: "SUPPORTED", supportQuotes: [{ evidenceId: review.evidenceId, verbatim: "The jacket is fully waterproof" }] }) }));
   const attestation = await attestor.attest({ claimSetHash: `sha256:${"0".repeat(64)}`, claim, subjectHash: resolved.subjectHash,
     manifest, evidence, config });
@@ -89,14 +89,14 @@ test("transport and output failures throw so admission treats the claim as unpro
   const { resolved, evidence } = await evidenceFor("jacket-waterproof-02");
   const config = await createGeminiAttestorConfig("gemini-test-model");
   const args = { claimSetHash: `sha256:${"0".repeat(64)}`, claim, subjectHash: resolved.subjectHash, manifest, evidence, config };
-  await assert.rejects(new GeminiSemanticAttestor({ apiKey, modelId: "gemini-test-model", fetch: fakeGemini(400) }).attest(args), /ATTESTOR_HTTP_400/);
-  await assert.rejects(new GeminiSemanticAttestor({ apiKey, modelId: "gemini-test-model", fetch: fakeGemini(() => "not json") }).attest(args),
+  await assert.rejects(new GeminiSemanticAttestor({ apiKey, modelIds: ["gemini-test-model"], retryBaseMs: 1, fetch: fakeGemini(400) }).attest(args), /ATTESTOR_HTTP_400/);
+  await assert.rejects(new GeminiSemanticAttestor({ apiKey, modelIds: ["gemini-test-model"], retryBaseMs: 1, fetch: fakeGemini(() => "not json") }).attest(args),
     /ATTESTOR_OUTPUT_NOT_JSON/);
   const calls = [];
-  await assert.rejects(new GeminiSemanticAttestor({ apiKey, modelId: "gemini-test-model", fetch: fakeGemini(503, calls) }).attest(args),
+  await assert.rejects(new GeminiSemanticAttestor({ apiKey, modelIds: ["gemini-test-model"], retryBaseMs: 1, fetch: fakeGemini(503, calls) }).attest(args),
     /ATTESTOR_HTTP_503/);
-  assert.equal(calls.length, 2, "one retry on a server error");
-  await assert.rejects(new GeminiSemanticAttestor({ apiKey, modelId: "other-model", fetch: fakeGemini(400) }).attest(args), /ATTESTOR_CONFIG_MISMATCH/);
+  assert.equal(calls.length, 4, "three retries on a server error");
+  await assert.rejects(new GeminiSemanticAttestor({ apiKey, modelIds: ["other-model"], retryBaseMs: 1, fetch: fakeGemini(400) }).attest(args), /ATTESTOR_CONFIG_MISMATCH/);
 });
 
 test("model output parser accepts fenced JSON and rejects unknown results", () => {
@@ -115,7 +115,7 @@ test("F3 regression: with a real advancing clock, fresh evidence reaches the att
   const claimSetHash = await sha256(canonicalize(claimSet));
   let called = 0;
   const config = await createGeminiAttestorConfig("gemini-test-model");
-  const gemini = new GeminiSemanticAttestor({ apiKey, modelId: "gemini-test-model", now: clock, fetch: fakeGemini((body) => {
+  const gemini = new GeminiSemanticAttestor({ apiKey, modelIds: ["gemini-test-model"], retryBaseMs: 1, now: clock, fetch: fakeGemini((body) => {
     called += 1;
     const request = JSON.parse(body.contents[0].parts[0].text.split("<request>")[1].split("</request>")[0]);
     const spec = request.evidence.find((item) => item.sourceClass === "MERCHANT_TECHNICAL_SPEC");
@@ -135,4 +135,42 @@ test("F3 regression: with a real advancing clock, fresh evidence reaches the att
   });
   assert.equal(called, 1, "attestor must be called");
   assert.deepEqual(result.outcome, { status: "ALLOW" });
+});
+
+test("a transient 503 is retried and the record names the model that answered", async () => {
+  const { resolved, evidence } = await evidenceFor("jacket-waterproof-02");
+  const spec = evidence.find((item) => item.sourceClass === "MERCHANT_TECHNICAL_SPEC");
+  const answer = { result: "SUPPORTED", supportQuotes: [{ evidenceId: spec.evidenceId, verbatim: "Waterproof and seam-sealed shell" }], contradictionQuotes: [] };
+  const urls = [];
+  let n = 0;
+  const flaky = async (url, init) => { urls.push(url); n += 1;
+    return n <= 2 ? new Response(JSON.stringify({ error: { message: "The model is overloaded." } }), { status: 503 })
+      : fakeGemini(answer)(url, init); };
+  const config = await createGeminiAttestorConfig(["primary-model", "backup-model"]);
+  const attestation = await new GeminiSemanticAttestor({ apiKey, modelIds: ["primary-model", "backup-model"], retryBaseMs: 1, fetch: flaky })
+    .attest({ claimSetHash: `sha256:${"0".repeat(64)}`, claim, subjectHash: resolved.subjectHash, manifest, evidence, config });
+  assert.equal(urls.length, 3);
+  assert.equal(answeredModel(attestation.attestationId), "primary-model");
+  assert.equal(attestation.modelId, "primary-model,backup-model");
+});
+
+test("a model that stays down falls back, and a 404 moves on without retrying", async () => {
+  const { resolved, evidence } = await evidenceFor("jacket-waterproof-02");
+  const spec = evidence.find((item) => item.sourceClass === "MERCHANT_TECHNICAL_SPEC");
+  const answer = { result: "SUPPORTED", supportQuotes: [{ evidenceId: spec.evidenceId, verbatim: "Waterproof and seam-sealed shell" }], contradictionQuotes: [] };
+  const urls = [];
+  const routed = async (url, init) => { urls.push(url);
+    if (url.includes("/down-model:")) return new Response("{}", { status: 503 });
+    if (url.includes("/missing-model:")) return new Response("{}", { status: 404 });
+    return fakeGemini(answer)(url, init); };
+  const ids = ["down-model", "missing-model", "backup-model"];
+  const config = await createGeminiAttestorConfig(ids);
+  const attestation = await new GeminiSemanticAttestor({ apiKey, modelIds: ids, retryBaseMs: 1, fetch: routed })
+    .attest({ claimSetHash: `sha256:${"0".repeat(64)}`, claim, subjectHash: resolved.subjectHash, manifest, evidence, config });
+  assert.equal(urls.filter((u) => u.includes("/down-model:")).length, 4, "1 try + 3 retries");
+  assert.equal(urls.filter((u) => u.includes("/missing-model:")).length, 1, "no retry on 404");
+  assert.equal(answeredModel(attestation.attestationId), "backup-model");
+  const valid = validateSemanticAttestation(attestation, { claimId: "waterproof", subjectHash: resolved.subjectHash,
+    evidenceSetHash: await hashEvidenceSet(evidence), evidence, config });
+  assert.equal(valid.result, "SUPPORTED");
 });

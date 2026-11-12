@@ -37,17 +37,30 @@ export const GEMINI_SYSTEM_PROMPT = [
 
 export interface GeminiAttestorOptions {
   apiKey: string;
-  modelId: string;
+  /** Primary model first, then fallbacks. A fallback is used only after the model before it keeps failing. */
+  modelIds: string[];
   maxOutputTokens?: number;
   endpoint?: string;
   timeoutMs?: number;
+  /** Retries per model after the first attempt (exponential backoff: base, 2x base, 4x base, plus jitter). */
+  retries?: number;
+  retryBaseMs?: number;
   fetch?: typeof fetch;
   now?: () => Date;
   newId?: () => string;
 }
 
-export async function createGeminiAttestorConfig(modelId: string, maxOutputTokens = 4096): Promise<AttestorConfig> {
-  if (!/^[A-Za-z0-9._-]{1,100}$/.test(modelId)) throw new Error("ATTESTOR_MODEL_ID_INVALID");
+/** The attestation's modelId is the configured chain; the model that actually answered is recorded in attestationId. */
+export function answeredModel(attestationId: string): string | undefined {
+  const parts = attestationId.split("~");
+  return parts.length === 3 && parts[0] === "att" && parts[1] ? parts[1] : undefined;
+}
+
+export async function createGeminiAttestorConfig(modelIds: string | string[], maxOutputTokens = 4096): Promise<AttestorConfig> {
+  const ids = Array.isArray(modelIds) ? modelIds : [modelIds];
+  if (ids.length === 0 || ids.length > 4 || new Set(ids).size !== ids.length ||
+      ids.some((id) => !/^[A-Za-z0-9._-]{1,100}$/.test(id))) throw new Error("ATTESTOR_MODEL_ID_INVALID");
+  const modelId = ids.join(",");
   if (!Number.isSafeInteger(maxOutputTokens) || maxOutputTokens < 256 || maxOutputTokens > 65536) {
     throw new Error("ATTESTOR_MAX_OUTPUT_TOKENS_INVALID");
   }
@@ -71,9 +84,14 @@ export class GeminiSemanticAttestor implements SemanticAttestor {
   private readonly timeoutMs: number;
   private readonly now: () => Date;
   private readonly newId: () => string;
+  private readonly retries: number;
+  private readonly retryBaseMs: number;
 
   constructor(private readonly options: GeminiAttestorOptions) {
     if (typeof options.apiKey !== "string" || options.apiKey.trim().length < 10) throw new Error("ATTESTOR_API_KEY_REQUIRED");
+    if (!Array.isArray(options.modelIds) || options.modelIds.length === 0) throw new Error("ATTESTOR_MODEL_ID_INVALID");
+    this.retries = options.retries ?? 3;
+    this.retryBaseMs = options.retryBaseMs ?? 1000;
     this.fetchImpl = options.fetch ?? globalThis.fetch;
     this.endpoint = (options.endpoint ?? GEMINI_DEFAULT_ENDPOINT).replace(/\/+$/, "");
     this.timeoutMs = options.timeoutMs ?? 30_000;
@@ -83,7 +101,7 @@ export class GeminiSemanticAttestor implements SemanticAttestor {
 
   async attest(args: Parameters<SemanticAttestor["attest"]>[0]): Promise<SemanticAttestationV1> {
     const { config } = args;
-    if (config.provider !== "google-gemini" || config.modelId !== this.options.modelId ||
+    if (config.provider !== "google-gemini" || config.modelId !== this.options.modelIds.join(",") ||
         config.attestorVersion !== GEMINI_ATTESTOR_VERSION || config.promptHash !== await sha256(GEMINI_SYSTEM_PROMPT)) {
       throw new Error("ATTESTOR_CONFIG_MISMATCH");
     }
@@ -103,10 +121,11 @@ export class GeminiSemanticAttestor implements SemanticAttestor {
       "</request>"
     ].join("\n");
 
-    const output = parseModelOutput(await this.generate(userText, config));
+    const answer = await this.generate(userText, config);
+    const output = parseModelOutput(answer.text);
     return {
       schemaVersion: "semantic-attestation-v1",
-      attestationId: `att-${this.newId()}`,
+      attestationId: `att~${answer.model}~${this.newId()}`,
       claimId: args.claim.claimId,
       subjectHash: args.subjectHash,
       evidenceSetHash: await hashEvidenceSet(args.evidence),
@@ -122,8 +141,7 @@ export class GeminiSemanticAttestor implements SemanticAttestor {
     };
   }
 
-  private async generate(userText: string, config: AttestorConfig): Promise<string> {
-    const url = `${this.endpoint}/models/${encodeURIComponent(config.modelId)}:generateContent`;
+  private async generate(userText: string, config: AttestorConfig): Promise<{ text: string; model: string }> {
     const body = JSON.stringify({
       systemInstruction: { parts: [{ text: GEMINI_SYSTEM_PROMPT }] },
       contents: [{ role: "user", parts: [{ text: userText }] }],
@@ -134,32 +152,51 @@ export class GeminiSemanticAttestor implements SemanticAttestor {
         responseMimeType: "application/json"
       }
     });
-    let lastError: Error = new Error("ATTESTOR_UNAVAILABLE");
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      let response: Response;
-      try {
-        response = await this.fetchImpl(url, {
-          method: "POST",
-          headers: { "content-type": "application/json", "x-goog-api-key": this.options.apiKey },
-          body,
-          signal: AbortSignal.timeout(this.timeoutMs)
-        });
-      } catch {
-        lastError = new Error("ATTESTOR_TRANSPORT_FAILED");
-        continue;
+    const failures: string[] = [];
+    for (const model of this.options.modelIds) {
+      const url = `${this.endpoint}/models/${encodeURIComponent(model)}:generateContent`;
+      for (let attempt = 0; attempt <= this.retries; attempt += 1) {
+        let response: Response;
+        try {
+          response = await this.fetchImpl(url, {
+            method: "POST",
+            headers: { "content-type": "application/json", "x-goog-api-key": this.options.apiKey },
+            body,
+            signal: AbortSignal.timeout(this.timeoutMs)
+          });
+        } catch {
+          failures.push(`ATTESTOR_TRANSPORT_FAILED ${model}`);
+          if (attempt < this.retries) await this.backoff(attempt);
+          continue;
+        }
+        if (response.ok) {
+          const text = extractText(await response.json());
+          if (!text) throw new Error(`ATTESTOR_EMPTY_RESPONSE ${model}`);
+          return { text, model };
+        }
+        failures.push(`ATTESTOR_HTTP_${response.status} ${model}: ${await errorMessage(response)}`);
+        const transient = response.status === 429 || response.status >= 500;
+        if (!transient) break; // 400/403/404: this model will not work; try the next one.
+        if (attempt < this.retries) await this.backoff(attempt, response.headers.get("retry-after"));
       }
-      if (response.status === 429 || response.status >= 500) {
-        lastError = new Error(`ATTESTOR_HTTP_${response.status}`);
-        await new Promise((resolve) => setTimeout(resolve, 750));
-        continue;
-      }
-      if (!response.ok) throw new Error(`ATTESTOR_HTTP_${response.status}`);
-      const payload: unknown = await response.json();
-      const text = extractText(payload);
-      if (!text) throw new Error("ATTESTOR_EMPTY_RESPONSE");
-      return text;
     }
-    throw lastError;
+    throw new Error(failures.at(-1) ?? "ATTESTOR_UNAVAILABLE");
+  }
+
+  private async backoff(attempt: number, retryAfter?: string | null): Promise<void> {
+    const hinted = retryAfter && /^\d+$/.test(retryAfter) ? Number(retryAfter) * 1000 : 0;
+    const exponential = this.retryBaseMs * 2 ** attempt + Math.floor(Math.random() * this.retryBaseMs * 0.25);
+    await new Promise((resolve) => setTimeout(resolve, Math.min(Math.max(hinted, exponential), 8000)));
+  }
+}
+
+async function errorMessage(response: Response): Promise<string> {
+  try {
+    const value: unknown = await response.json();
+    const message = isRecord(value) && isRecord(value.error) && typeof value.error.message === "string" ? value.error.message : "";
+    return message.replace(/\s+/g, " ").slice(0, 160);
+  } catch {
+    return "";
   }
 }
 

@@ -3,7 +3,7 @@
 //   ATTESTOR_MODEL_ID=... pnpm attestor:check -> also attests "waterproof" for every demo product
 import { readFile } from "node:fs/promises";
 import { FixtureMerchantAdapter } from "../dist/merchant/FixtureMerchantAdapter.js";
-import { GeminiSemanticAttestor, GEMINI_DEFAULT_ENDPOINT, createGeminiAttestorConfig } from "../dist/attestor/GeminiSemanticAttestor.js";
+import { GeminiSemanticAttestor, GEMINI_DEFAULT_ENDPOINT, createGeminiAttestorConfig, answeredModel } from "../dist/attestor/GeminiSemanticAttestor.js";
 import { validateSemanticAttestation } from "../dist/attestor/AttestationValidation.js";
 import { evaluateSourceAuthority } from "../dist/policy/SourceAuthorityPolicy.js";
 import { hashEvidenceSet } from "../dist/bundle/EvidenceSet.js";
@@ -34,8 +34,10 @@ const manifest = {
   freshnessSeconds: raw.freshness_seconds, contradictionPolicy: raw.contradiction_policy
 };
 const merchant = new FixtureMerchantAdapter(catalogue);
-const config = await createGeminiAttestorConfig(modelId, Number(process.env.ATTESTOR_MAX_OUTPUT_TOKENS || "4096"));
-const attestor = new GeminiSemanticAttestor({ apiKey, modelId });
+const modelIds = [modelId, ...(process.env.ATTESTOR_FALLBACK_MODEL_ID || "").split(",").map((id) => id.trim()).filter(Boolean)];
+const config = await createGeminiAttestorConfig(modelIds, Number(process.env.ATTESTOR_MAX_OUTPUT_TOKENS || "4096"));
+const attestor = new GeminiSemanticAttestor({ apiKey, modelIds });
+process.stdout.write(`Model order: ${modelIds.join(" -> ")} (each retried with backoff on 429/5xx)\n\n`);
 const claim = { claimId: "waterproof", kind: "SEMANTIC_BOOLEAN", humanText: "The jacket must be waterproof, not just water-resistant.",
   operator: "SUPPORTED", value: true, evidenceProfileId: manifest.evidenceProfileId, overridePolicy: "HUMAN_EXACT_SUBJECT" };
 
@@ -54,7 +56,7 @@ for (const product of catalogue.products) {
       evidenceSetHash: await hashEvidenceSet(evidence), evidence, config });
     const policy = evaluateSourceAuthority(valid, manifest, evidence);
     const quote = (q) => `    "${q.verbatim}" (${evidence.find((e) => e.evidenceId === q.evidenceId)?.sourceClass})`;
-    line = `${product.name}: model says ${valid.result}; source-authority policy -> ${policy} (${Date.now() - started} ms)\n` +
+    line = `${product.name}: ${answeredModel(valid.attestationId)} says ${valid.result}; source-authority policy -> ${policy} (${Date.now() - started} ms)\n` +
       (valid.supportQuotes.length ? `  supports:\n${valid.supportQuotes.map(quote).join("\n")}\n` : "") +
       (valid.contradictionQuotes.length ? `  contradicts:\n${valid.contradictionQuotes.map(quote).join("\n")}\n` : "");
   } catch (error) {

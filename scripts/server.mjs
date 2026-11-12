@@ -77,10 +77,11 @@ if (attestorProvider === "gemini") {
   if (!process.env.ATTESTOR_API_KEY) throw new Error("ATTESTOR_API_KEY_REQUIRED");
   const modelId = process.env.ATTESTOR_MODEL_ID;
   if (!modelId) throw new Error("ATTESTOR_MODEL_ID_REQUIRED (run pnpm attestor:check to list models your key can use)");
-  modelAttestorConfig = await createGeminiAttestorConfig(modelId, Number(process.env.ATTESTOR_MAX_OUTPUT_TOKENS || "4096"));
+  const modelIds = [modelId, ...(process.env.ATTESTOR_FALLBACK_MODEL_ID || "").split(",").map((id) => id.trim()).filter(Boolean)];
+  modelAttestorConfig = await createGeminiAttestorConfig(modelIds, Number(process.env.ATTESTOR_MAX_OUTPUT_TOKENS || "4096"));
   const endpoint = process.env.ATTESTOR_ENDPOINT; // test-only override, e.g. a local stub; defaults to Google's API
   if (endpoint && !/^(https:\/\/|http:\/\/(127\.0\.0\.1|localhost)[:/])/.test(endpoint)) throw new Error("ATTESTOR_ENDPOINT_INVALID");
-  modelAttestor = new CachedSemanticAttestor(new GeminiSemanticAttestor({ apiKey: process.env.ATTESTOR_API_KEY, modelId,
+  modelAttestor = new CachedSemanticAttestor(new GeminiSemanticAttestor({ apiKey: process.env.ATTESTOR_API_KEY, modelIds,
     ...(endpoint ? { endpoint } : {}) }));
 }
 const pool = createPostgresSqlPool(process.env.DATABASE_URL);
