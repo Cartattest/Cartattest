@@ -18,7 +18,9 @@
     "keygen": "node scripts/generate-es256-key.mjs",
     "start": "pnpm build && node --env-file=.env scripts/server.mjs",
     "replay:e2e": "node --env-file=.env scripts/replay-e2e.mjs",
-    "eval:report": "node scripts/evaluation-report.mjs"
+    "eval:report": "node scripts/evaluation-report.mjs",
+    "attestor:check": "pnpm build && node --env-file=.env scripts/attestor-check.mjs",
+    "demo:agent": "node --env-file=.env scripts/demo-agent.mjs"
   },
   "devDependencies": {
     "@types/pg": "^8.23.1",
