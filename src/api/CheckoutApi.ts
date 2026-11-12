@@ -13,6 +13,7 @@ import { parseBuyerOverrideV1 } from "./BuyerOverrideValidation.js";
 import { parseClaimSetV1 } from "./ClaimSetValidation.js";
 import { evaluateStepUpDecision, type StepUpContextV1 } from "../application/StepUpDecisionService.js";
 import type { BuyerOverrideV1 } from "../domain/types.js";
+import type { ClaimEvaluation } from "../policy/AdmissionPolicy.js";
 import canonicalize from "canonicalize";
 import { finalizeEvidenceBundle, type EvidenceBundleSigningConfig } from "../application/FinalizeEvidenceBundle.js";
 import { loadEvidenceBundle } from "../persistence/EvidenceBundleRepository.js";
@@ -199,7 +200,10 @@ export async function handleCheckoutApiRequest(request: Request, dependencies: C
         ...dependencies.selection,
         loadClaimSet: (claimSetId) => loadClaimSet(dependencies.pool, claimSetId)
       });
-      if (evaluation.outcome.status === "BLOCK") return json({ status: "BLOCKED", reason: evaluation.outcome.reason }, 200);
+      const checks = "claimEvaluations" in evaluation ? evidenceChecks(evaluation.claimEvaluations) : [];
+      if (evaluation.outcome.status === "BLOCK") {
+        return json({ status: "BLOCKED", reason: evaluation.outcome.reason, ...(checks.length ? { evidenceChecks: checks } : {}) }, 200);
+      }
       if (evaluation.outcome.status === "STEP_UP") {
         if (!("claimSet" in evaluation)) throw new Error("INVALID_STEP_UP_CONTEXT");
         const createdAt = dependencies.selection.now?.() ?? new Date();
@@ -222,7 +226,7 @@ export async function handleCheckoutApiRequest(request: Request, dependencies: C
           createdAt: createdAt.toISOString(),
           expiresAt
         });
-        return json({ status: "STEP_UP", decisionUrl: `/step-up/${encodeURIComponent(sessionId)}` }, 200);
+        return json({ status: "STEP_UP", decisionUrl: `/step-up/${encodeURIComponent(sessionId)}`, ...(checks.length ? { evidenceChecks: checks } : {}) }, 200);
       }
       const checkout = await createOrderAfterAdmission(evaluation, {
         pool: dependencies.pool, gateway: dependencies.gateway, newId: dependencies.selection.newId,
@@ -230,7 +234,7 @@ export async function handleCheckoutApiRequest(request: Request, dependencies: C
         ...(dependencies.selection.now ? { now: dependencies.selection.now } : {})
       });
       if (!("admissionId" in checkout)) throw new Error("INVALID_ADMISSION_EVALUATION");
-      return json({ status: "ALLOWED", admissionId: checkout.admissionId, approvalUrl: checkout.approvalUrl }, 200);
+      return json({ status: "ALLOWED", admissionId: checkout.admissionId, approvalUrl: checkout.approvalUrl, ...(checks.length ? { evidenceChecks: checks } : {}) }, 200);
     }
     const result = await completeCheckoutWithReplayReconciliation(body, {
       pool: dependencies.pool, gateway: dependencies.gateway, newId: dependencies.selection.newId,
@@ -304,9 +308,18 @@ async function handleStepUpRequest(
   let overrides: BuyerOverrideV1[];
   try { overrides = body.overrides.map(parseBuyerOverrideV1); }
   catch { return json({ error: "INVALID_BUYER_OVERRIDE" }, 400); }
+  // Signature verification is async; the policy is synchronous. Verify first, then hand the policy the results.
+  // Comparing the unresolved Promise with `=== true` rejected every genuine override (F4).
+  const verifiedOverrides = new Set<BuyerOverrideV1>();
+  if (dependencies.selection.verifyOverride) {
+    for (const override of overrides) {
+      try { if (await dependencies.selection.verifyOverride(override) === true) verifiedOverrides.add(override); }
+      catch { /* An unverifiable override stays unverified and the policy blocks it. */ }
+    }
+  }
   const result = await evaluateStepUpDecision(context, overrides, {
     now: now.toISOString(),
-    ...(dependencies.selection.verifyOverride ? { verifyOverride: dependencies.selection.verifyOverride } : {})
+    ...(dependencies.selection.verifyOverride ? { verifyOverride: (override: BuyerOverrideV1) => verifiedOverrides.has(override) } : {})
   });
   if (result.outcome.status === "BLOCK") return json({ status: "BLOCKED", reason: result.outcome.reason }, 409);
   if (result.outcome.status === "STEP_UP") return json({ status: "STEP_UP", claimIds: result.outcome.claimIds }, 200);
@@ -368,6 +381,7 @@ function stepUpView(context: StepUpContextV1, newId: () => string): unknown {
         subjectHash: evaluation.subjectHash,
         evidenceSetHash: evaluation.evidenceSetHash,
         ...(evaluation.attestationHash ? { attestationHash: evaluation.attestationHash } : {}),
+        ...(evaluation.attestation ? { evidenceCheck: evidenceChecks([evaluation])[0] } : {}),
         evidence: (evaluation.evidence ?? []).map((record) => ({
           sourceClass: record.sourceClass,
           origin: record.origin,
@@ -487,4 +501,23 @@ async function readBody(request: Request): Promise<string> {
 
 function json(value: unknown, status: number, extraHeaders: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json; charset=utf-8", ...extraHeaders } });
+}
+
+/** What the semantic attestor reported, for display only. Admission was already decided by deterministic policy. */
+function evidenceChecks(evaluations: ClaimEvaluation[]) {
+  return evaluations.flatMap((evaluation) => {
+    const attestation = evaluation.attestation;
+    if (!attestation) return [];
+    const quote = (value: { evidenceId: string; verbatim: string }) => ({
+      sourceClass: evaluation.evidence?.find((item) => item.evidenceId === value.evidenceId)?.sourceClass ?? "UNKNOWN",
+      verbatim: value.verbatim
+    });
+    return [{
+      claimId: evaluation.claim.claimId,
+      result: attestation.result,
+      modelId: attestation.modelId,
+      supportQuotes: attestation.supportQuotes.map(quote),
+      contradictionQuotes: attestation.contradictionQuotes.map(quote)
+    }];
+  });
 }

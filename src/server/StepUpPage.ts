@@ -44,6 +44,9 @@ const page = `<!doctype html>
     button:active { transform: scale(.98); }
     button:focus-visible, input:focus-visible { outline: 3px solid #b36332; outline-offset: 3px; }
     .scope { color: var(--muted); font-size: .9rem; }
+    .aicheck { border: 1px solid var(--line); border-radius: var(--radius); background: var(--white); padding: 14px 16px; margin: 4px 0 22px; }
+    .aicheck strong { display: block; margin: 4px 0 6px; }
+    .aicheck p { margin: 4px 0; color: var(--muted); }
     .key-field { display: grid; gap: 8px; margin: 8px 0; }
     input[type=file] { max-width: 100%; color: var(--ink); }
     .message { min-height: 1.5em; margin-top: 10px; color: var(--muted); }
@@ -113,6 +116,15 @@ const page = `<!doctype html>
         data.claims.forEach((claim) => {
           list.append(node("h2", claim.text));
           if (claim.value !== undefined) list.append(node("p", "Requested: " + String(claim.value)));
+          if (claim.evidenceCheck) {
+            const check = node("div", undefined, "aicheck");
+            check.append(node("span", "AI evidence check · " + claim.evidenceCheck.modelId, "label"));
+            check.append(node("strong", claim.evidenceCheck.result === "CONTRADICTED" ? "Evidence contradicts this requirement"
+              : claim.evidenceCheck.result === "SUPPORTED" ? "Supported only by sources that cannot satisfy it" : "Evidence does not prove this requirement"));
+            (claim.evidenceCheck.contradictionQuotes || []).forEach((q) => check.append(node("p", "Contradicts: \u201c" + q.verbatim + "\u201d (" + q.sourceClass + ")")));
+            (claim.evidenceCheck.supportQuotes || []).forEach((q) => check.append(node("p", "Supports: \u201c" + q.verbatim + "\u201d (" + q.sourceClass + ")")));
+            list.append(check);
+          }
           const evidence = node("ul", undefined, "evidence");
           (claim.evidence || []).forEach((item) => {
             const row = node("li");
