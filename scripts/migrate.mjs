@@ -12,7 +12,8 @@ try {
     ["0003_evidence_bundles", (currentPool, sql) => applySchemaMigration(currentPool, "0003_evidence_bundles", sql)],
     ["0004_admission_evidence_snapshot", (currentPool, sql) => applySchemaMigration(currentPool, "0004_admission_evidence_snapshot", sql)],
     ["0005_abort_creating_order", (currentPool, sql) => applySchemaMigration(currentPool, "0005_abort_creating_order", sql)],
-    ["0006_decision_log", (currentPool, sql) => applySchemaMigration(currentPool, "0006_decision_log", sql)]
+    ["0006_decision_log", (currentPool, sql) => applySchemaMigration(currentPool, "0006_decision_log", sql)],
+    ["0007_hosted_demo_keys", (currentPool, sql) => applySchemaMigration(currentPool, "0007_hosted_demo_keys", sql)]
   ];
   let appliedCount = 0;
   for (const [version, apply] of migrations) {

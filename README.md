@@ -59,11 +59,14 @@ The server binds to `127.0.0.1:3000` by default. Open `/` for the demo hub. The 
 | --- | --- |
 | `/` | Demo hub with links to Buyer Review and Evaluation |
 | `/claim-set/review` | Review and sign buyer requirements |
+| `/demo` | Hosted demo only: run the shopping agent from a button (see HOW_TO.md, "Hosted demo on Render") |
 | `/decisions` | Decision log (AG Grid): every agent proposal, the AI evidence check and quotes, the decision, and live PayPal status |
 | `/evaluation` | Development evaluation report view |
 | `/step-up/{sessionId}` | Review an eligible exception created during checkout |
 | `/receipt/{bundleId}` | Verify a receipt created during checkout |
 | `POST /api/webhooks/paypal` | PayPal capture-completion webhook |
+
+A hosted demo (PayPal sandbox only) can be deployed to Render from `render.yaml`; see HOW_TO.md.
 
 Replay uses a labeled simulated approval and never contacts PayPal. A live Sandbox checkout requires a reachable approval return/cancel URL and Sandbox buyer approval. Neither local Replay nor a Sandbox result implies production readiness.
 

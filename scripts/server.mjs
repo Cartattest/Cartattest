@@ -8,11 +8,23 @@ import { verifyBuyerOverrideSignature, verifyClaimSetSignature } from "../dist/s
 import { sha256 } from "../dist/domain/Hash.js";
 import { hashEvidenceSet } from "../dist/bundle/EvidenceSet.js";
 import { createCheckoutHttpServer } from "../dist/server/CheckoutHttpServer.js";
+import { createHostedDemo } from "../dist/server/HostedDemo.js";
+import { loadOrCreateHostedDemoKeys } from "../dist/persistence/HostedDemoKeyRepository.js";
+import { handleCheckoutApiRequest } from "../dist/api/CheckoutApi.js";
 import { CachedSemanticAttestor } from "../dist/attestor/CachedSemanticAttestor.js";
 import { GeminiSemanticAttestor, createGeminiAttestorConfig } from "../dist/attestor/GeminiSemanticAttestor.js";
 
 const demoMode = process.env.DEMO_MODE || "sandbox";
 if (!["sandbox", "replay"].includes(demoMode)) throw new Error("DEMO_MODE_INVALID");
+// Hosted demo (Render): keys live in the database, the server listens on all interfaces behind the proxy,
+// and PayPal return URLs default to the public URL the host provides.
+const hostedDemo = process.env.CARTATTEST_HOSTED_DEMO === "1";
+const publicBaseUrl = (process.env.PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL || "").replace(/\/+$/, "");
+if (hostedDemo && publicBaseUrl && !/^https:\/\/[^/]+$/.test(publicBaseUrl)) throw new Error("PUBLIC_BASE_URL_INVALID");
+if (publicBaseUrl) {
+  process.env.PAYPAL_RETURN_URL ||= `${publicBaseUrl}/checkout/return`;
+  process.env.PAYPAL_CANCEL_URL ||= `${publicBaseUrl}/checkout/cancel`;
+}
 const required = ["DATABASE_URL"];
 if (demoMode === "sandbox") required.push("PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET", "PAYPAL_RETURN_URL", "PAYPAL_CANCEL_URL");
 for (const name of required) if (!process.env[name]) throw new Error(name + "_REQUIRED");
@@ -23,9 +35,11 @@ let payee = process.env.PAYPAL_MERCHANT_ID
     ? { identityType: "EMAIL", identityValue: process.env.PAYPAL_MERCHANT_EMAIL }
     : undefined;
 
-const buyerKeyId = process.env.CARTATTEST_BUYER_KEY_ID || "buyer-local-v1";
+const pool = createPostgresSqlPool(process.env.DATABASE_URL);
+const hostedKeys = hostedDemo ? await loadOrCreateHostedDemoKeys(pool) : undefined;
+const buyerKeyId = hostedKeys ? "buyer-hosted-demo-v1" : process.env.CARTATTEST_BUYER_KEY_ID || "buyer-local-v1";
 const buyerPublicKeyPath = process.env.CARTATTEST_BUYER_PUBLIC_KEY_PATH || ".codex/keys/buyer.public.pem";
-const keyPem = await readFile(buyerPublicKeyPath, "utf8");
+const keyPem = hostedKeys ? hostedKeys.buyerPublicPem : await readFile(buyerPublicKeyPath, "utf8");
 const keyDer = createPublicKey(keyPem).export({ type: "spki", format: "der" });
 const buyerKey = await crypto.subtle.importKey("spki", keyDer, { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]);
 const buyerKeys = new Map([[buyerKeyId, buyerKey]]);
@@ -33,14 +47,15 @@ const servicePrivatePath = process.env.CARTATTEST_SERVICE_PRIVATE_KEY_PATH || ".
 const servicePublicPath = process.env.CARTATTEST_SERVICE_PUBLIC_KEY_PATH || ".codex/keys/service.public.pem";
 let evidenceBundleSigning;
 if (servicePrivatePath && servicePublicPath) {
-  const [privatePem, publicPem] = await Promise.all([readFile(servicePrivatePath, "utf8"), readFile(servicePublicPath, "utf8")]);
+  const [privatePem, publicPem] = hostedKeys ? [hostedKeys.servicePrivatePem, hostedKeys.servicePublicPem]
+    : await Promise.all([readFile(servicePrivatePath, "utf8"), readFile(servicePublicPath, "utf8")]);
   const privateDer = createPrivateKey(privatePem).export({ type: "pkcs8", format: "der" });
   const publicDer = createPublicKey(publicPem).export({ type: "spki", format: "der" });
   const derivedPublicDer = createPublicKey(createPrivateKey(privatePem)).export({ type: "spki", format: "der" });
   if (!derivedPublicDer.equals(publicDer)) throw new Error("CARTATTEST_SERVICE_KEY_PAIR_MISMATCH");
   const privateKey = await crypto.subtle.importKey("pkcs8", privateDer, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
   const publicKey = await crypto.subtle.importKey("spki", publicDer, { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]);
-  const keyId = process.env.CARTATTEST_SERVICE_KEY_ID || "service-local-v1";
+  const keyId = hostedKeys ? "service-hosted-demo-v1" : process.env.CARTATTEST_SERVICE_KEY_ID || "service-local-v1";
   evidenceBundleSigning = { keyId, privateKey, trustedKeys: new Map([[keyId, publicKey]]) };
 }
 
@@ -84,7 +99,6 @@ if (attestorProvider === "gemini") {
   modelAttestor = new CachedSemanticAttestor(new GeminiSemanticAttestor({ apiKey: process.env.ATTESTOR_API_KEY, modelIds,
     ...(endpoint ? { endpoint } : {}) }));
 }
-const pool = createPostgresSqlPool(process.env.DATABASE_URL);
 const replayObservation = demoMode === "replay"
   ? await readJson(new URL("../fixtures/paypal/sanitized/g0-01-approved-capture.json", import.meta.url))
   : undefined;
@@ -106,7 +120,7 @@ const gateway = replayGateway
     returnUrl: process.env.PAYPAL_RETURN_URL,
     cancelUrl: process.env.PAYPAL_CANCEL_URL
   });
-const server = createCheckoutHttpServer({
+const checkoutDependencies = {
   pool,
   gateway,
   loadEvaluationReport: () => readJson(new URL("../.codex/evaluation/dev-report.json", import.meta.url)),
@@ -153,10 +167,23 @@ const server = createCheckoutHttpServer({
     },
     newId: () => crypto.randomUUID()
   }
-});
+};
+const server = createCheckoutHttpServer(checkoutDependencies, hostedKeys ? {
+  trustProxy: process.env.CARTATTEST_TRUST_PROXY === "1",
+  hostedDemo: createHostedDemo({
+    callApi: (request) => handleCheckoutApiRequest(request, checkoutDependencies),
+    buyerPrivateKey: await crypto.subtle.importKey("pkcs8", createPrivateKey(hostedKeys.buyerPrivatePem).export({ type: "pkcs8", format: "der" }),
+      { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]),
+    buyerKeyId,
+    catalogue
+  })
+} : {});
 const port = Number(process.env.PORT || "3000");
 if (!Number.isSafeInteger(port) || port < 1 || port > 65535) throw new Error("PORT_INVALID");
-server.listen(port, "127.0.0.1", () => process.stdout.write(`CartAttest ${demoMode === "replay" ? "Replay" : "Sandbox"} listening on http://127.0.0.1:${port} · semantic attestor: ${modelAttestorConfig ? `${modelAttestorConfig.provider} ${modelAttestorConfig.modelId}` : "disabled (semantic claims fail closed)"}\n`));
+const host = process.env.HOST || "127.0.0.1";
+if (!["127.0.0.1", "0.0.0.0", "::"].includes(host)) throw new Error("HOST_INVALID");
+if (host !== "127.0.0.1" && !hostedDemo) throw new Error("HOST_PUBLIC_REQUIRES_HOSTED_DEMO");
+server.listen(port, host, () => process.stdout.write(`CartAttest ${demoMode === "replay" ? "Replay" : "Sandbox"}${hostedDemo ? " hosted demo" : ""} listening on ${host === "127.0.0.1" ? `http://127.0.0.1:${port}` : `${host}:${port}${publicBaseUrl ? ` (${publicBaseUrl})` : ""}`} · semantic attestor: ${modelAttestorConfig ? `${modelAttestorConfig.provider} ${modelAttestorConfig.modelId}` : "disabled (semantic claims fail closed)"}\n`));
 
 server.on("close", () => pool.end().catch(() => {}));
 process.on("SIGINT", () => server.close());
