@@ -59,6 +59,7 @@ The server binds to `127.0.0.1:3000` by default. Open `/` for the demo hub. The 
 | --- | --- |
 | `/` | Demo hub with links to Buyer Review and Evaluation |
 | `/claim-set/review` | Review and sign buyer requirements |
+| `/decisions` | Decision log (AG Grid): every agent proposal, the AI evidence check and quotes, the decision, and live PayPal status |
 | `/evaluation` | Development evaluation report view |
 | `/step-up/{sessionId}` | Review an eligible exception created during checkout |
 | `/receipt/{bundleId}` | Verify a receipt created during checkout |

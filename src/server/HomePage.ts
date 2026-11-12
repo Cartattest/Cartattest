@@ -28,7 +28,7 @@ footer{width:min(1160px,calc(100% - 48px));margin:0 auto;padding:18px 0 28px;bor
 <main id="main"><section class="hero" aria-labelledby="page-title"><div class="hero-copy">
 <h1 id="page-title">Payment follows the buyer’s rules.</h1>
 <p class="intro">CartAttest checks buyer requirements and merchant evidence before a PayPal order can be captured.</p>
-<div class="actions"><a class="primary" href="/claim-set/review">Review buyer requirements</a><a class="secondary" href="/evaluation">View evaluation</a></div>
+<div class="actions"><a class="primary" href="/claim-set/review">Review buyer requirements</a><a class="secondary" href="/evaluation">View evaluation</a><a class="secondary" href="/decisions">Decision log</a></div>
 <p class="helper">Bring a Claim Set proposal and the local buyer signing key (.pem). The key stays in this browser.</p>
 </div><aside class="flow-panel" aria-labelledby="flow-title"><h2 id="flow-title">Checks before capture</h2>
 <ol class="flow-list">

@@ -61,6 +61,10 @@ Expected output includes `REPLAY_E2E_PASS`. It writes signed synthetic checkout 
 
 With the server running (Replay or Sandbox), `pnpm demo:agent` signs a Claim Set ("waterproof jacket under GBP 100") and proposes each catalogue jacket. It prints the AI evidence check and CartAttest's decision: an approval URL for an allowed item, or a STEP-UP review link.
 
+## Decision log
+
+Open `/decisions` for an AG Grid table of every decision: the item, total, AI verdict and word-for-word quotes, the outcome and why, and the live PayPal order and payment status. It supports search, filtering by outcome, sorting and CSV export. After pulling this change, run `pnpm install` and `pnpm migrate` once (migration `0006_decision_log`). AG Grid Community is served from `node_modules`, so no CDN is needed.
+
 ## Run PayPal Sandbox
 
 Keep `PAYPAL_ENV=sandbox`. Configure the REST app credentials, seller/payee, and browser-reachable return/cancel URLs in `.env`. Apply migrations, then start:
