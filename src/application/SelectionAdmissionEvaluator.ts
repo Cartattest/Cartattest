@@ -27,7 +27,8 @@ export interface SelectionAdmissionDependencies {
   attestor: SemanticAttestor;
   now?: () => Date;
   newId: () => string;
-  verifyOverride?: AdmissionPolicyOptions["verifyOverride"];
+  /** May be async (ES256 verification is). Overrides are only evaluated in the STEP-UP decision route. */
+  verifyOverride?: (override: Parameters<NonNullable<AdmissionPolicyOptions["verifyOverride"]>>[0]) => boolean | Promise<boolean>;
 }
 
 export type SelectionAdmissionResult =
@@ -107,7 +108,13 @@ export async function evaluateSelectionAdmission(
     if (!Array.isArray(evidence) || evidence.some((item) => !item || item.subjectRef !== resolved.subjectRef)) {
       return { outcome: { status: "BLOCK", reason: "PROVENANCE_FAILURE" } };
     }
-    const assessment = assessEvidenceManifest(evidence, manifest, nowIso);
+    // Freshness is judged at assessment time, after retrieval. Using the admission start time made evidence
+    // retrieved a few milliseconds later look "from the future", so semantic claims never reached the attestor (F3).
+    const assessedAt = dependencies.now?.() ?? new Date();
+    if (!Number.isFinite(assessedAt.getTime()) || assessedAt.getTime() < now.getTime()) {
+      return { outcome: { status: "BLOCK", reason: "INVALID_POLICY_TIME" } };
+    }
+    const assessment = assessEvidenceManifest(evidence, manifest, assessedAt.toISOString());
     const evidenceSetHash = await hashEvidenceSet(evidence);
     const result: SemanticClaimEvidence = {
       manifest,
@@ -163,7 +170,8 @@ export async function evaluateSelectionAdmission(
     });
   }
 
-  const options: AdmissionPolicyOptions = { now: nowIso, ...(dependencies.verifyOverride ? { verifyOverride: dependencies.verifyOverride } : {}) };
+  // No buyer override exists at selection time; overrides are verified in the STEP-UP decision route.
+  const options: AdmissionPolicyOptions = { now: nowIso };
   const profiles = [...new Set([...semanticEvidence.values()].map((value) => value.manifest.evidenceProfileId))];
   if (profiles.length > 1) return { outcome: { status: "BLOCK", reason: "MULTIPLE_EVIDENCE_PROFILES_UNSUPPORTED" } };
   return {
