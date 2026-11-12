@@ -15,6 +15,7 @@ import { evaluateStepUpDecision, type StepUpContextV1 } from "../application/Ste
 import type { BuyerOverrideV1 } from "../domain/types.js";
 import type { ClaimEvaluation } from "../policy/AdmissionPolicy.js";
 import { answeredModel } from "../attestor/GeminiSemanticAttestor.js";
+import { listDecisions, recordDecision, type DecisionLogEntry } from "../persistence/DecisionLogRepository.js";
 import canonicalize from "canonicalize";
 import { finalizeEvidenceBundle, type EvidenceBundleSigningConfig } from "../application/FinalizeEvidenceBundle.js";
 import { loadEvidenceBundle } from "../persistence/EvidenceBundleRepository.js";
@@ -36,6 +37,11 @@ export interface CheckoutApiDependencies {
 export async function handleCheckoutApiRequest(request: Request, dependencies: CheckoutApiDependencies): Promise<Response> {
   const url = new URL(request.url);
   const path = url.pathname;
+  if (path === "/api/decisions") {
+    if (request.method !== "GET") return json({ error: "METHOD_NOT_ALLOWED" }, 405, { Allow: "GET" });
+    try { return json({ decisions: await listDecisions(dependencies.pool, 500) }, 200); }
+    catch { return json({ error: "DECISION_LOG_UNAVAILABLE" }, 503); }
+  }
   if (path === "/api/claim-sets/prepare") {
     if (request.method !== "POST") return json({ error: "METHOD_NOT_ALLOWED" }, 405, { Allow: "POST" });
     if (!/^application\/json(?:\s*;|$)/i.test(request.headers.get("content-type") ?? "")) {
@@ -202,7 +208,17 @@ export async function handleCheckoutApiRequest(request: Request, dependencies: C
         loadClaimSet: (claimSetId) => loadClaimSet(dependencies.pool, claimSetId)
       });
       const checks = "claimEvaluations" in evaluation ? evidenceChecks(evaluation.claimEvaluations) : [];
+      const proposal = isRecord(body) ? body : {};
+      const logBase = {
+        source: "SELECTION" as const,
+        ...(typeof proposal.claimSetId === "string" ? { claimSetId: proposal.claimSetId } : {}),
+        ...(typeof proposal.subjectRef === "string" ? { subjectRef: proposal.subjectRef } : {}),
+        summary: decisionSummary("claimSet" in evaluation ? evaluation.claimSet : undefined,
+          "resolvedSelection" in evaluation ? evaluation.resolvedSelection : undefined, checks,
+          "claimEvaluations" in evaluation ? evaluation.claimEvaluations : [])
+      };
       if (evaluation.outcome.status === "BLOCK") {
+        await logDecision(dependencies, { ...logBase, outcome: "BLOCK", reason: evaluation.outcome.reason });
         return json({ status: "BLOCKED", reason: evaluation.outcome.reason, ...(checks.length ? { evidenceChecks: checks } : {}) }, 200);
       }
       if (evaluation.outcome.status === "STEP_UP") {
@@ -227,6 +243,7 @@ export async function handleCheckoutApiRequest(request: Request, dependencies: C
           createdAt: createdAt.toISOString(),
           expiresAt
         });
+        await logDecision(dependencies, { ...logBase, outcome: "STEP_UP", reason: evaluation.outcome.claimIds.join(","), stepUpSessionId: sessionId });
         return json({ status: "STEP_UP", decisionUrl: `/step-up/${encodeURIComponent(sessionId)}`, ...(checks.length ? { evidenceChecks: checks } : {}) }, 200);
       }
       const checkout = await createOrderAfterAdmission(evaluation, {
@@ -235,6 +252,7 @@ export async function handleCheckoutApiRequest(request: Request, dependencies: C
         ...(dependencies.selection.now ? { now: dependencies.selection.now } : {})
       });
       if (!("admissionId" in checkout)) throw new Error("INVALID_ADMISSION_EVALUATION");
+      await logDecision(dependencies, { ...logBase, outcome: "ALLOW", admissionId: checkout.admissionId });
       return json({ status: "ALLOWED", admissionId: checkout.admissionId, approvalUrl: checkout.approvalUrl, ...(checks.length ? { evidenceChecks: checks } : {}) }, 200);
     }
     const result = await completeCheckoutWithReplayReconciliation(body, {
@@ -296,6 +314,7 @@ async function handleStepUpRequest(
     if (Object.keys(body).length !== 1) return json({ error: "INVALID_STEP_UP_DECISION" }, 400);
     try {
       await consumeStepUpSession(dependencies.pool, sessionId, now.toISOString());
+      await logDecision(dependencies, stepUpLog(context, sessionId, "CHOOSE_ANOTHER", "BUYER_CHOSE_ANOTHER"));
       return json({ status: "CHOOSE_ANOTHER" }, 200);
     } catch (error) {
       return json({ error: error instanceof Error ? error.message : "STEP_UP_SESSION_UNAVAILABLE" }, 409);
@@ -322,7 +341,10 @@ async function handleStepUpRequest(
     now: now.toISOString(),
     ...(dependencies.selection.verifyOverride ? { verifyOverride: (override: BuyerOverrideV1) => verifiedOverrides.has(override) } : {})
   });
-  if (result.outcome.status === "BLOCK") return json({ status: "BLOCKED", reason: result.outcome.reason }, 409);
+  if (result.outcome.status === "BLOCK") {
+    await logDecision(dependencies, stepUpLog(context, sessionId, "BLOCK", result.outcome.reason));
+    return json({ status: "BLOCKED", reason: result.outcome.reason }, 409);
+  }
   if (result.outcome.status === "STEP_UP") return json({ status: "STEP_UP", claimIds: result.outcome.claimIds }, 200);
 
   try { await consumeStepUpSession(dependencies.pool, sessionId, now.toISOString()); }
@@ -337,6 +359,7 @@ async function handleStepUpRequest(
       ...(dependencies.selection.now ? { now: dependencies.selection.now } : {})
     });
     if (!("admissionId" in checkout)) throw new Error("INVALID_ADMISSION_EVALUATION");
+    await logDecision(dependencies, { ...stepUpLog(context, sessionId, "ALLOW", "BUYER_SIGNED_EXCEPTION"), admissionId: checkout.admissionId });
     return json({ status: "ALLOWED", admissionId: checkout.admissionId, approvalUrl: checkout.approvalUrl }, 200);
   } catch {
     return json({ error: "CHECKOUT_FAILED" }, 500);
@@ -521,4 +544,43 @@ function evidenceChecks(evaluations: ClaimEvaluation[]) {
       contradictionQuotes: attestation.contradictionQuotes.map(quote)
     }];
   });
+}
+
+/** Decision logging is an audit aid: it must never change or break a checkout decision. */
+async function logDecision(dependencies: CheckoutApiDependencies, entry: Omit<DecisionLogEntry, "decisionId" | "createdAt">): Promise<void> {
+  try {
+    const createdAt = dependencies.selection.now?.() ?? new Date();
+    await recordDecision(dependencies.pool, { decisionId: globalThis.crypto.randomUUID(), createdAt: createdAt.toISOString(), ...entry });
+  } catch { /* The decision stands even if the log write fails. */ }
+}
+
+function stepUpLog(context: StepUpContextV1, sessionId: string, outcome: DecisionLogEntry["outcome"], reason: string) {
+  return {
+    source: "STEP_UP_DECISION" as const,
+    claimSetId: context.claimSet.claimSetId,
+    subjectRef: context.resolvedSelection.subjectRef,
+    outcome,
+    reason,
+    stepUpSessionId: sessionId,
+    summary: decisionSummary(context.claimSet, context.resolvedSelection, evidenceChecks(context.claimEvaluations))
+  };
+}
+
+function decisionSummary(
+  claimSet: { buyerRequestText?: string } | undefined,
+  resolved: { cartBinding?: { currency?: string; items?: Array<{ name?: string; sku?: string }>; amountBreakdown?: { total?: string } } } | undefined,
+  checks: ReturnType<typeof evidenceChecks>,
+  evaluations: ClaimEvaluation[] = []
+): Record<string, unknown> {
+  const item = resolved?.cartBinding?.items?.[0];
+  const failedRules = evaluations.filter((evaluation) => evaluation.deterministicSatisfied === false).map((evaluation) => evaluation.claim.humanText);
+  return {
+    ...(failedRules.length ? { failedRules } : {}),
+    ...(claimSet?.buyerRequestText ? { requestText: claimSet.buyerRequestText } : {}),
+    ...(item?.name ? { itemName: item.name } : {}),
+    ...(item?.sku ? { sku: item.sku } : {}),
+    ...(resolved?.cartBinding?.amountBreakdown?.total ? { total: resolved.cartBinding.amountBreakdown.total } : {}),
+    ...(resolved?.cartBinding?.currency ? { currency: resolved.cartBinding.currency } : {}),
+    evidenceChecks: checks
+  };
 }
