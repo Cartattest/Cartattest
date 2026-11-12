@@ -2,7 +2,7 @@
 
 **Evidence-bound verification for autonomous AI commerce.**
 
-CartAttest checks an AI shopping agent's product choice against buyer-approved constraints and merchant evidence before creating a PayPal order. It then checks that the PayPal order still matches the admitted cart before capture. The semantic provider is not yet wired, so semantic claims currently fail closed.
+CartAttest checks an AI shopping agent's product choice against buyer-approved constraints and merchant evidence before creating a PayPal order. It then checks that the PayPal order still matches the admitted cart before capture. Semantic claims (for example "waterproof, not just water-resistant") are checked by a Google Gemini evidence attestor that must quote merchant evidence word for word; deterministic source-authority policy, not the model, decides admission. Without a configured model, semantic claims fail closed.
 
 ## Delivery status
 
@@ -26,7 +26,7 @@ The evaluation holdout, provider/model decision, release ownership, and authoriz
 - Buyer STEP-UP and receipt pages, an evaluation report view, and a root demo hub.
 - PostgreSQL persistence, offline bundle verification, tests, and CI workflows.
 
-Semantic claims currently fail closed as `UNPROVEN`: no semantic provider adapter is wired. Replay is synthetic and does not contact PayPal or move money. The fixture merchant catalogue and local signing keys are for development; they are not production trust infrastructure.
+Semantic claims use the Gemini attestor when `ATTESTOR_PROVIDER=gemini`, `ATTESTOR_API_KEY` and `ATTESTOR_MODEL_ID` are set; otherwise they fail closed as `UNPROVEN`. Any model failure, invalid output or quote that is not verbatim in the evidence is treated as `UNPROVEN`. The model's verdict and quotes are shown on the STEP-UP page and returned to the agent as `evidenceChecks`. The private holdout evaluation (Gate 2) has not been run, so no accuracy figure is claimed. Replay is synthetic and does not contact PayPal or move money. The fixture merchant catalogue and local signing keys are for development; they are not production trust infrastructure.
 
 ## Requirements and setup
 

@@ -35,7 +35,7 @@ The key generator refuses to overwrite existing files. Keep `.env` and `.codex/`
 | `PAYPAL_WEBHOOK_ID` | Webhook registered to the same PayPal app | Needed for real webhook verification/delivery. Gate 3 acceptance is already recorded; repeat delivery testing needs a public HTTPS endpoint and valid ID. |
 | `CARTATTEST_BUYER_KEY_ID`, `CARTATTEST_BUYER_PUBLIC_KEY_PATH` | Trusted public key for Claim Set and override signatures | Defaults to `buyer-local-v1` and `.codex/keys/buyer.public.pem`; matching private key is selected locally in the buyer browser UI. |
 | `CARTATTEST_SERVICE_PRIVATE_KEY_PATH`, `CARTATTEST_SERVICE_PUBLIC_KEY_PATH`, `CARTATTEST_SERVICE_KEY_ID` | Evidence receipt signing and verification | Local defaults use the service key pair under `.codex/keys/`. |
-| `ATTESTOR_PROVIDER`, `ATTESTOR_MODEL_ID`, `ATTESTOR_API_KEY` | Intended semantic provider configuration | No adapter consumes these variables. Setting them does not enable model calls. Do not configure a provider or tune a model before the owner freezes the private holdout and decides the provider/model direction. |
+| `ATTESTOR_PROVIDER`, `ATTESTOR_API_KEY`, `ATTESTOR_MODEL_ID` | Semantic attestor (AI) | `gemini` is supported. Run `pnpm attestor:check` to verify the key and list models. Unset = semantic claims fail closed as `UNPROVEN`. `ATTESTOR_ENDPOINT` is a test-only override for a local stub. |
 | `PORT` | Local HTTP port | Optional; defaults to `3000`. The server binds to `127.0.0.1`. |
 | `CARTATTEST_BASE_URL` | Replay E2E base URL | Optional; defaults to `http://127.0.0.1:3000`. The replay script accepts local HTTP hosts only. |
 
@@ -56,6 +56,10 @@ pnpm replay:e2e
 ```
 
 Expected output includes `REPLAY_E2E_PASS`. It writes signed synthetic checkout records to the configured database. This is local replay evidence, not PayPal Sandbox evidence.
+
+## Run the demo agent
+
+With the server running (Replay or Sandbox), `pnpm demo:agent` signs a Claim Set ("waterproof jacket under GBP 100") and proposes each catalogue jacket. It prints the AI evidence check and CartAttest's decision: an approval URL for an allowed item, or a STEP-UP review link.
 
 ## Run PayPal Sandbox
 

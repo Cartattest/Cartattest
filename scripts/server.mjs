@@ -8,6 +8,8 @@ import { verifyBuyerOverrideSignature, verifyClaimSetSignature } from "../dist/s
 import { sha256 } from "../dist/domain/Hash.js";
 import { hashEvidenceSet } from "../dist/bundle/EvidenceSet.js";
 import { createCheckoutHttpServer } from "../dist/server/CheckoutHttpServer.js";
+import { CachedSemanticAttestor } from "../dist/attestor/CachedSemanticAttestor.js";
+import { GeminiSemanticAttestor, createGeminiAttestorConfig } from "../dist/attestor/GeminiSemanticAttestor.js";
 
 const demoMode = process.env.DEMO_MODE || "sandbox";
 if (!["sandbox", "replay"].includes(demoMode)) throw new Error("DEMO_MODE_INVALID");
@@ -67,6 +69,21 @@ const manifests = new Map(manifestFile.profiles.map((value) => {
 }));
 
 const disabledHash = await sha256("cartattest-disabled-attestor-v1");
+const attestorProvider = (process.env.ATTESTOR_PROVIDER || "disabled").toLowerCase();
+if (!["disabled", "gemini"].includes(attestorProvider)) throw new Error("ATTESTOR_PROVIDER_UNSUPPORTED");
+let modelAttestor;
+let modelAttestorConfig;
+if (attestorProvider === "gemini") {
+  if (!process.env.ATTESTOR_API_KEY) throw new Error("ATTESTOR_API_KEY_REQUIRED");
+  const modelId = process.env.ATTESTOR_MODEL_ID;
+  if (!modelId) throw new Error("ATTESTOR_MODEL_ID_REQUIRED (run pnpm attestor:check to list models your key can use)");
+  const modelIds = [modelId, ...(process.env.ATTESTOR_FALLBACK_MODEL_ID || "").split(",").map((id) => id.trim()).filter(Boolean)];
+  modelAttestorConfig = await createGeminiAttestorConfig(modelIds, Number(process.env.ATTESTOR_MAX_OUTPUT_TOKENS || "4096"));
+  const endpoint = process.env.ATTESTOR_ENDPOINT; // test-only override, e.g. a local stub; defaults to Google's API
+  if (endpoint && !/^(https:\/\/|http:\/\/(127\.0\.0\.1|localhost)[:/])/.test(endpoint)) throw new Error("ATTESTOR_ENDPOINT_INVALID");
+  modelAttestor = new CachedSemanticAttestor(new GeminiSemanticAttestor({ apiKey: process.env.ATTESTOR_API_KEY, modelIds,
+    ...(endpoint ? { endpoint } : {}) }));
+}
 const pool = createPostgresSqlPool(process.env.DATABASE_URL);
 const replayObservation = demoMode === "replay"
   ? await readJson(new URL("../fixtures/paypal/sanitized/g0-01-approved-capture.json", import.meta.url))
@@ -108,12 +125,13 @@ const server = createCheckoutHttpServer({
       return manifest;
     },
     getAttestorConfig() {
+      if (modelAttestorConfig) return modelAttestorConfig;
       return {
         provider: "disabled", modelId: "disabled", temperature: 0, topP: 1, maxOutputTokens: 1,
         promptHash: disabledHash, configHash: disabledHash, attestorVersion: "fail-closed-v1"
       };
     },
-    attestor: {
+    attestor: modelAttestor ?? {
       async attest(args) {
         return {
           schemaVersion: "semantic-attestation-v1",
@@ -138,7 +156,7 @@ const server = createCheckoutHttpServer({
 });
 const port = Number(process.env.PORT || "3000");
 if (!Number.isSafeInteger(port) || port < 1 || port > 65535) throw new Error("PORT_INVALID");
-server.listen(port, "127.0.0.1", () => process.stdout.write(`CartAttest ${demoMode === "replay" ? "Replay" : "Sandbox"} listening on http://127.0.0.1:${port}\n`));
+server.listen(port, "127.0.0.1", () => process.stdout.write(`CartAttest ${demoMode === "replay" ? "Replay" : "Sandbox"} listening on http://127.0.0.1:${port} · semantic attestor: ${modelAttestorConfig ? `${modelAttestorConfig.provider} ${modelAttestorConfig.modelId}` : "disabled (semantic claims fail closed)"}\n`));
 
 server.on("close", () => pool.end().catch(() => {}));
 process.on("SIGINT", () => server.close());
