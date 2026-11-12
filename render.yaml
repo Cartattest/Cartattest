@@ -1,0 +1,47 @@
+# Render Blueprint for the hosted CartAttest demo (PayPal sandbox only).
+# Render -> New -> Blueprint -> pick this repo. It asks for the four secret values marked sync: false.
+services:
+  - type: web
+    name: cartattest
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: npx --yes pnpm@10.29.3 install --frozen-lockfile && npm run build
+    startCommand: node scripts/migrate.mjs && node scripts/server.mjs
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: cartattest-db
+          property: connectionString
+      - key: CARTATTEST_HOSTED_DEMO
+        value: "1"
+      - key: CARTATTEST_TRUST_PROXY
+        value: "1"
+      - key: HOST
+        value: 0.0.0.0
+      - key: DEMO_MODE
+        value: sandbox
+      - key: PAYPAL_ENV
+        value: sandbox
+      - key: ATTESTOR_PROVIDER
+        value: gemini
+      - key: ATTESTOR_MODEL_ID
+        value: gemini-3.5-flash
+      - key: ATTESTOR_FALLBACK_MODEL_ID
+        value: gemini-flash-latest,gemini-3.8-flash
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: PAYPAL_MERCHANT_ID
+        sync: false
+      - key: ATTESTOR_API_KEY
+        sync: false
+
+databases:
+  - name: cartattest-db
+    plan: free
+    region: frankfurt

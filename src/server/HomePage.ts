@@ -1,7 +1,7 @@
-export function handleHomePageRequest(request: Request): Response | undefined {
+export function handleHomePageRequest(request: Request, options: { hostedDemo?: boolean } = {}): Response | undefined {
   if (new URL(request.url).pathname !== "/") return undefined;
   if (request.method !== "GET" && request.method !== "HEAD") return html("<h1>Method not allowed</h1>", 405, { Allow: "GET, HEAD" });
-  return html(page, 200);
+  return html(options.hostedDemo ? hostedPage : page, 200);
 }
 
 function html(body: string, status: number, headers: Record<string, string> = {}): Response {
@@ -41,3 +41,5 @@ footer{width:min(1160px,calc(100% - 48px));margin:0 auto;padding:18px 0 28px;bor
 <section class="routes" aria-labelledby="routes-title"><h2 id="routes-title">Other pages in the demo</h2><p class="route-copy">Evaluation opens directly. STEP-UP and receipt pages use identifiers created during a checkout, so they open from that flow.</p>
 <div class="contextual"><span><code>/step-up/{sessionId}</code> Buyer reviews an eligible exception</span><span><code>/receipt/{bundleId}</code> Buyer verifies the completed purchase</span></div>
 </section></main><footer>CartAttest checks the purchase before PayPal capture and records how the decision was reached.</footer></body></html>`;
+
+const hostedPage = page.replace("<div class=\"actions\"><a class=\"primary\" href=\"/claim-set/review\">Review buyer requirements</a><a class=\"secondary\" href=\"/evaluation\">View evaluation</a><a class=\"secondary\" href=\"/decisions\">Decision log</a></div>\n<p class=\"helper\">Bring a Claim Set proposal and the local buyer signing key (.pem). The key stays in this browser.</p>", "<div class=\"actions\"><a class=\"primary\" href=\"/demo\">Run the shopping agent</a><a class=\"secondary\" href=\"/decisions\">Decision log</a></div>\n<p class=\"helper\">Hosted demo: PayPal sandbox only, no real money. The agent proposes three jackets; Google Gemini checks each one's evidence before any PayPal order exists.</p>");

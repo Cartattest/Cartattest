@@ -65,6 +65,19 @@ With the server running (Replay or Sandbox), `pnpm demo:agent` signs a Claim Set
 
 Open `/decisions` for an AG Grid table of every decision: the item, total, AI verdict and word-for-word quotes, the outcome and why, and the live PayPal order and payment status. It supports search, filtering by outcome, sorting and CSV export. After pulling this change, run `pnpm install` and `pnpm migrate` once (migration `0006_decision_log`). AG Grid Community is served from `node_modules`, so no CDN is needed.
 
+## Hosted demo on Render
+
+`render.yaml` deploys a public demo that uses the PayPal **sandbox** only. In Render: **New → Blueprint**, pick this repository, then enter `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_MERCHANT_ID` (the sandbox business account ID) and `ATTESTOR_API_KEY` when asked. Render creates a free web service and a free PostgreSQL database; migrations run on every start.
+
+With `CARTATTEST_HOSTED_DEMO=1` the server:
+
+- listens on `HOST=0.0.0.0` behind Render's proxy (it refuses a public host without hosted-demo mode);
+- creates a demo buyer key and a receipt-signing key on first start and keeps them in the `hosted_demo_keys` table (migration `0007`), so receipts still verify after restarts;
+- sets the PayPal return and cancel URLs from `RENDER_EXTERNAL_URL` (or `PUBLIC_BASE_URL`);
+- adds `/demo`, where a visitor runs the shopping agent with one button. The demo buyer key is held by the server only so visitors need no key file; a real buyer signs on their own device. Runs are rate-limited per client (5 per 10 minutes) and overall (60 per hour).
+
+To approve the allowed jacket, visitors log in to PayPal with a sandbox **personal** test account; share one in your testing instructions, never real credentials. Render's free web service sleeps when idle, so the first visit can take about a minute.
+
 ## Run PayPal Sandbox
 
 Keep `PAYPAL_ENV=sandbox`. Configure the REST app credentials, seller/payee, and browser-reachable return/cancel URLs in `.env`. Apply migrations, then start:
